@@ -1,0 +1,15 @@
+[Unit]
+Description=HLS segmenter for channel 1
+After=max-liquidsoap.service
+Requires=max-liquidsoap.service
+PartOf=max-liquidsoap.service
+
+[Service]
+User=max
+Group=max
+ExecStart=/home/max/bin/hls-ch1.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

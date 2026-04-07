@@ -1,0 +1,20 @@
+[Unit]
+Description=Quad-mux HDMI output for Max Headroom
+After=max-liquidsoap.service graphical.target
+Requires=max-liquidsoap.service
+PartOf=max-liquidsoap.service
+
+[Service]
+Type=simple
+User=max
+Group=max
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/max/.Xauthority
+Environment=XDG_RUNTIME_DIR=/run/user/1001
+ExecStartPre=/bin/sleep 10
+ExecStart=/home/max/bin/quadmux-hdmi1.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=graphical.target
