@@ -1,0 +1,11 @@
+content/main/*
+content/glitch/*
+content/dead_air/*
+content/idents/*
+content/bumpers/*
+!content/**/.gitkeep
+
+*.log
+logs/
+playlists/*.m3u
+*.pid
