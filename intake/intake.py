@@ -45,14 +45,19 @@ def worker_loop():
 
 # ─── Routes ─────────────────────────────────────────────────────────────────
 
+def _all_categories():
+    extra = [c for c in db.get_user_categories() if c not in CATEGORIES]
+    return CATEGORIES + extra
+
+
 @app.route("/")
 def index():
-    return render_template("index.html", categories=CATEGORIES, lengths=LENGTHS, base_path=BASE_PATH)
+    return render_template("index.html", categories=_all_categories(), lengths=LENGTHS, base_path=BASE_PATH)
 
 
 @app.route("/api/categories")
 def api_categories():
-    return jsonify(CATEGORIES)
+    return jsonify(_all_categories())
 
 
 @app.route("/api/quickmeta", methods=["POST"])
@@ -131,6 +136,9 @@ def api_submit():
         return jsonify(error="length must be auto, short, medium, or long"), 400
     if not urls:
         return jsonify(error="no urls provided"), 400
+
+    if category not in CATEGORIES:
+        db.add_user_category(category)
 
     job_ids = []
 

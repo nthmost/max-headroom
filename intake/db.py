@@ -32,7 +32,28 @@ def init_db():
             conn.execute("ALTER TABLE jobs ADD COLUMN pipeline_status TEXT DEFAULT NULL")
         except Exception:
             pass
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_categories (
+                name TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL
+            )
+        """)
         conn.commit()
+
+
+def add_user_category(name):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO user_categories (name, created_at) VALUES (?, ?)",
+            (name, _now()),
+        )
+        conn.commit()
+
+
+def get_user_categories():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT name FROM user_categories ORDER BY name ASC").fetchall()
+        return [r["name"] for r in rows]
 
 
 def _now():

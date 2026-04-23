@@ -622,19 +622,19 @@ async function submitJob() {
     let body;
 
     if (currentSource === 'ia') {
-      const url = document.getElementById('url-input').value.trim();
-      if (!url) { msg('ENTER AN IDENTIFIER', 'err'); return; }
+      const rawUrl = document.getElementById('url-input').value.trim();
+      if (!rawUrl) { msg('ENTER AN IDENTIFIER', 'err'); return; }
       const cat = document.getElementById('category').value;
       if (cat === '__new__') { msg('ENTER A CATEGORY NAME', 'err'); return; }
-      body = { source: 'ia', urls: [url], category: cat, length: currentLength };
+      body = { source: 'ia', urls: [rawUrl], category: cat, length: currentLength };
     } else {
-      const url = document.getElementById('url-input').value.trim();
-      if (!url) { msg('ENTER A URL', 'err'); return; }
+      const rawUrl = document.getElementById('url-input').value.trim();
+      if (!rawUrl) { msg('ENTER A URL', 'err'); return; }
       const cat = document.getElementById('category').value;
       if (cat === '__new__') { msg('ENTER A CATEGORY NAME', 'err'); return; }
       body = {
         source: 'youtube',
-        urls: [url],
+        urls: [rawUrl],
         playlist: document.getElementById('is-playlist').checked,
         category: cat,
         length: currentLength,
