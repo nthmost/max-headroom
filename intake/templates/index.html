@@ -227,6 +227,13 @@
   .badge-done { color: var(--amber-dim); border-color: var(--amber-faint); }
   .badge-failed { color: var(--red-bright); border-color: var(--red-bright); }
   .badge-cancelled { color: var(--amber-dim); border-color: var(--amber-faint); }
+  .badge-pipeline {
+    font-size: 0.65rem; letter-spacing: 0.1em; padding: 1px 4px; border: 1px solid;
+    white-space: nowrap; flex-shrink: 0; opacity: 0.8;
+  }
+  .badge-zikzak { color: #00cc66; border-color: #006633; }
+  .badge-live    { color: var(--green); border-color: var(--green); }
+  .badge-check-failed { color: var(--amber-dim); border-color: var(--amber-faint); }
 
   .job-meta { font-size: 0.78rem; color: var(--amber-dim); }
 
@@ -695,6 +702,12 @@ function jobRow(job, showCancel) {
     ? `<button class="cancel-btn" onclick="cancelJob(${job.id}, event)">CANCEL</button>`
     : '';
 
+  const pipelineBadge = {
+    on_zikzak:    '<span class="badge-pipeline badge-zikzak">→ ZIKZAK</span>',
+    live:         '<span class="badge-pipeline badge-live">▶ LIVE</span>',
+    check_failed: '<span class="badge-pipeline badge-check-failed">? CHECK FAILED</span>',
+  }[job.pipeline_status] || '';
+
   const title = job.title || job.url;
   const meta = `${job.source.toUpperCase()} · ${job.category.replace(/_/g,' ')} · ${job.length}`;
   const error = job.error_msg ? `<div class="job-meta" style="color:var(--red-bright)">${escHtml(job.error_msg)}</div>` : '';
@@ -704,6 +717,7 @@ function jobRow(job, showCancel) {
       <div class="job-top">
         <span class="job-title">${escHtml(title)}</span>
         ${statusBadge}
+        ${pipelineBadge}
         ${cancelBtn}
       </div>
       <div class="job-meta">${escHtml(meta)}</div>

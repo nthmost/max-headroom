@@ -7,6 +7,8 @@ import os
 import re
 import subprocess
 import shutil
+import threading
+import time
 import db
 from config import (
     INCOMING_DIR, LOG_DIR,
@@ -180,6 +182,54 @@ def parse_ia_identifier(url_or_id):
     return None
 
 
+def _check_pipeline(job):
+    """
+    Background thread: after a non-IA download completes, wait for inotify/playlist
+    regeneration then confirm the file landed on zikzak and entered a playlist.
+    Updates pipeline_status on the job row accordingly.
+    """
+    job_id = job["id"]
+    category = job["category"]
+    length = job["length"]
+
+    time.sleep(20)
+
+    try:
+        # Check if the destination directory has files for this job
+        dest = f"{ZIKZAK_MEDIA}/{category}/{length}/"
+        ls_result = subprocess.run(
+            [
+                "ssh", "-o", "StrictHostKeyChecking=no",
+                "-J", ZIKZAK_JUMP,
+                f"{ZIKZAK_USER}@{ZIKZAK_HOST}",
+                f"ls {dest} 2>/dev/null",
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        if ls_result.returncode != 0 or not ls_result.stdout.strip():
+            db.mark_pipeline_status(job_id, "check_failed")
+            return
+
+        db.mark_pipeline_status(job_id, "on_zikzak")
+
+        # Check if any playlist references this category
+        playlist_result = subprocess.run(
+            [
+                "ssh", "-o", "StrictHostKeyChecking=no",
+                "-J", ZIKZAK_JUMP,
+                f"{ZIKZAK_USER}@{ZIKZAK_HOST}",
+                f"grep -l '{category}' /home/max/playlists/*.m3u 2>/dev/null | wc -l",
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        count = playlist_result.stdout.strip()
+        if playlist_result.returncode == 0 and count.isdigit() and int(count) > 0:
+            db.mark_pipeline_status(job_id, "live")
+
+    except Exception:
+        db.mark_pipeline_status(job_id, "check_failed")
+
+
 def run_job(job):
     """
     Execute a download job. Blocks until complete.
@@ -209,6 +259,8 @@ def run_job(job):
 
     if returncode == 0:
         db.mark_done(job_id)
+        if job["source"] != "ia":
+            threading.Thread(target=_check_pipeline, args=(job,), daemon=True).start()
     else:
         error_msg = ""
         try:
@@ -232,7 +284,7 @@ def _build_loki_yt_cmd(url, category, length, job_id):
         f"set -e && "
         f"mkdir -p {staging} && "
         f"{LOKI_YT_DLP} -f bestvideo+bestaudio/best --no-playlist "
-        f"--cookies {LOKI_COOKIES} "
+        f"--restrict-filenames --cookies {LOKI_COOKIES} "
         f"-o '{staging}/%(title)s.%(ext)s' '{url}' && "
         f"ssh -o StrictHostKeyChecking=no -J {ZIKZAK_JUMP} "
         f"{ZIKZAK_USER}@{ZIKZAK_HOST} 'mkdir -p {dest}' && "

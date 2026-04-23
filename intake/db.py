@@ -24,9 +24,14 @@ def init_db():
                 pid         INTEGER,
                 log_path    TEXT,
                 error_msg   TEXT,
-                updated_at  TEXT NOT NULL
+                updated_at  TEXT NOT NULL,
+                pipeline_status TEXT DEFAULT NULL
             )
         """)
+        try:
+            conn.execute("ALTER TABLE jobs ADD COLUMN pipeline_status TEXT DEFAULT NULL")
+        except Exception:
+            pass
         conn.commit()
 
 
@@ -94,6 +99,15 @@ def mark_cancelled(job_id):
         conn.execute(
             "UPDATE jobs SET status = 'cancelled', pid = NULL, updated_at = ? WHERE id = ?",
             (_now(), job_id),
+        )
+        conn.commit()
+
+
+def mark_pipeline_status(job_id, status):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE jobs SET pipeline_status = ?, updated_at = ? WHERE id = ?",
+            (status, _now(), job_id),
         )
         conn.commit()
 

@@ -125,7 +125,7 @@ def api_submit():
 
     if source not in ("youtube", "ia", "playlist_file"):
         return jsonify(error="source must be youtube, ia, or playlist_file"), 400
-    if not re.match(r'^[a-z0-9_]+$', category):
+    if not re.match(r'^[a-z][a-z0-9_]*$', category):
         return jsonify(error=f"invalid category name: {category}"), 400
     if length not in ("auto", *LENGTHS):
         return jsonify(error="length must be auto, short, medium, or long"), 400
