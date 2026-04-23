@@ -109,17 +109,7 @@
   #playlist-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--amber); }
   #playlist-toggle input { width: auto; }
 
-  .dropzone {
-    border: 1px dashed var(--amber-dim); padding: 20px;
-    text-align: center; font-size: 0.85rem; letter-spacing: 0.2em;
-    color: var(--amber-dim); cursor: pointer; transition: all 0.2s;
-  }
-  .dropzone.dragover { border-color: var(--amber); color: var(--amber); background: var(--amber-faint); }
-  .dropzone input[type=file] { display: none; }
-
-  #file-info { font-size: 0.85rem; color: var(--green); min-height: 1.2em; }
-
-  .submit-btn {
+.submit-btn {
     width: 100%; padding: 10px; border: 1px solid var(--amber);
     background: var(--amber-faint); color: var(--amber); cursor: pointer;
     font-family: 'VT323', monospace; font-size: 1.3rem; letter-spacing: 0.2em;
@@ -215,7 +205,6 @@
       <div class="source-tabs">
         <button class="tab active" onclick="setSource('youtube')">YOUTUBE</button>
         <button class="tab" onclick="setSource('ia')">INTERNET ARCHIVE</button>
-        <button class="tab" onclick="setSource('file')">PLAYLIST FILE</button>
       </div>
     </div>
 
@@ -229,19 +218,6 @@
     <div id="playlist-toggle">
       <input type="checkbox" id="is-playlist">
       <span>PLAYLIST URL (expand all videos)</span>
-    </div>
-
-    <!-- File drop zone -->
-    <div id="file-section" style="display:none">
-      <label>DROP PLAYLIST FILE (.m3u, .txt)</label>
-      <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()"
-           ondragover="event.preventDefault(); this.classList.add('dragover')"
-           ondragleave="this.classList.remove('dragover')"
-           ondrop="handleFileDrop(event)">
-        DROP FILE HERE OR CLICK TO BROWSE
-        <input type="file" id="file-input" accept=".m3u,.m3u8,.txt" onchange="handleFileSelect(event)">
-      </div>
-      <div id="file-info"></div>
     </div>
 
     <!-- Category -->
@@ -309,18 +285,15 @@ const url = path => BASE + path;
 
 let currentSource = 'youtube';
 let currentLength = 'auto';
-let pendingFileUrls = [];
 let expandedLogIds = new Set();
 let logIntervals = {};
 
 function setSource(s) {
   currentSource = s;
   document.querySelectorAll('.tab').forEach((t, i) => {
-    t.classList.toggle('active', ['youtube','ia','file'][i] === s);
+    t.classList.toggle('active', ['youtube','ia'][i] === s);
   });
-  document.getElementById('url-section').style.display = s === 'file' ? 'none' : '';
   document.getElementById('playlist-toggle').style.display = s === 'youtube' ? '' : 'none';
-  document.getElementById('file-section').style.display = s === 'file' ? '' : 'none';
   document.getElementById('url-label').textContent = s === 'ia' ? 'ARCHIVE.ORG IDENTIFIER OR URL' : 'YOUTUBE URL';
   document.getElementById('url-input').placeholder = s === 'ia'
     ? 'archive.org/details/… or identifier' : 'https://youtube.com/watch?v=…';
@@ -347,15 +320,7 @@ async function submitJob() {
   try {
     let body;
 
-    if (currentSource === 'file') {
-      if (!pendingFileUrls.length) { msg('NO FILE LOADED', 'err'); return; }
-      body = {
-        source: 'playlist_file',
-        urls: pendingFileUrls,
-        category: document.getElementById('category').value,
-        length: currentLength,
-      };
-    } else if (currentSource === 'ia') {
+    if (currentSource === 'ia') {
       const url = document.getElementById('url-input').value.trim();
       if (!url) { msg('ENTER AN IDENTIFIER', 'err'); return; }
       body = { source: 'ia', urls: [url], category: document.getElementById('category').value, length: currentLength };
@@ -377,8 +342,6 @@ async function submitJob() {
 
     msg(`QUEUED ${data.queued} JOB${data.queued !== 1 ? 'S' : ''}`, 'ok');
     document.getElementById('url-input').value = '';
-    pendingFileUrls = [];
-    document.getElementById('file-info').textContent = '';
     refreshQueue();
   } catch (e) {
     msg('REQUEST FAILED: ' + e.message, 'err');
@@ -387,35 +350,6 @@ async function submitJob() {
   }
 }
 
-function parsePlaylistFile(text) {
-  return text.split('\n')
-    .map(l => l.trim())
-    .filter(l => l.startsWith('http'));
-}
-
-function handleFileSelect(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  loadFile(file);
-}
-
-function handleFileDrop(e) {
-  e.preventDefault();
-  document.getElementById('dropzone').classList.remove('dragover');
-  const file = e.dataTransfer.files[0];
-  if (!file) return;
-  loadFile(file);
-}
-
-function loadFile(file) {
-  const reader = new FileReader();
-  reader.onload = ev => {
-    pendingFileUrls = parsePlaylistFile(ev.target.result);
-    document.getElementById('file-info').textContent =
-      `LOADED: ${file.name} — ${pendingFileUrls.length} URL${pendingFileUrls.length !== 1 ? 'S' : ''}`;
-  };
-  reader.readAsText(file);
-}
 
 async function cancelJob(id, e) {
   e.stopPropagation();
