@@ -543,13 +543,20 @@ function modalError(text) {
 }
 
 async function queueFromModal() {
-  const cat = document.getElementById('modal-category').value;
+  let cat = document.getElementById('modal-category').value;
   if (cat === '__new__') {
     const inp = document.getElementById('modal-new-category-input');
-    inp.style.display = 'block';
-    inp.focus();
-    modalError('TYPE A CATEGORY NAME AND PRESS ENTER');
-    return;
+    if (inp.value.trim()) {
+      // auto-commit whatever they typed
+      cat = addCategoryToSelect('modal-category', inp.value);
+      inp.style.display = 'none';
+      if (!cat) { modalError('INVALID CATEGORY NAME'); return; }
+    } else {
+      inp.style.display = 'block';
+      inp.focus();
+      modalError('TYPE A CATEGORY NAME AND PRESS ENTER');
+      return;
+    }
   }
   document.getElementById('modal-error').style.display = 'none';
   const btn = document.getElementById('modal-queue-btn');
@@ -565,6 +572,7 @@ async function queueFromModal() {
     const res = await fetch(url('/api/submit'), { method: 'POST', headers: headers(), body: JSON.stringify(body) });
     const data = await res.json();
     if (!res.ok) { modalError('ERROR: ' + (data.error || res.status)); return; }
+    addCategoryToSelect('category', cat);  // sync new category to main form
     closeModal();
     document.getElementById('url-input').value = '';
     msg(`QUEUED ${data.queued} JOB${data.queued !== 1 ? 'S' : ''}`, 'ok');
