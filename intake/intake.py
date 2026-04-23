@@ -55,6 +55,31 @@ def api_categories():
     return jsonify(CATEGORIES)
 
 
+@app.route("/api/quickmeta", methods=["POST"])
+def api_quickmeta():
+    """Fast endpoint: returns title + duration using cheap yt-dlp --print call."""
+    data = request.get_json(force=True)
+    source = data.get("source")
+    raw_url = data.get("url", "").strip()
+
+    if not raw_url:
+        return jsonify(error="no url provided"), 400
+    if source not in ("youtube", "ia"):
+        return jsonify(error="source must be youtube or ia"), 400
+
+    try:
+        if source == "youtube":
+            title, duration = downloader.resolve_youtube_metadata(raw_url)
+        else:
+            identifier = downloader.parse_ia_identifier(raw_url)
+            if not identifier:
+                return jsonify(error=f"not a valid IA identifier: {raw_url}"), 400
+            title, duration = downloader.resolve_ia_metadata(identifier)
+        return jsonify(title=title, duration_seconds=duration, length=classify_length(duration))
+    except Exception as exc:
+        return jsonify(error=str(exc)), 500
+
+
 @app.route("/api/analyze", methods=["POST"])
 def api_analyze():
     data = request.get_json(force=True)

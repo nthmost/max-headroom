@@ -131,15 +131,49 @@
   .analyze-btn:hover { border-color: var(--amber); color: var(--amber); }
   .analyze-btn:disabled { opacity: 0.4; cursor: default; }
 
-  #ai-result {
-    display: none; padding: 8px 10px;
-    border: 1px solid var(--amber-faint); background: #0a0a00;
-    font-size: 0.78rem; color: var(--amber-dim); line-height: 1.5;
+  /* ── Modal ── */
+  #modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.88); z-index: 100;
+    justify-content: center; align-items: center;
   }
-  #ai-result .ai-title { color: var(--amber); font-size: 0.85rem; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #ai-result .ai-reasoning { font-style: italic; }
-  #ai-result.loading { display: block; border-color: var(--amber-dim); animation: pulse 1.2s ease-in-out infinite; }
+  #modal-overlay.open { display: flex; }
+  #modal {
+    background: var(--dark); border: 1px solid var(--amber);
+    padding: 24px 28px; width: min(500px, 94vw);
+    display: flex; flex-direction: column; gap: 14px;
+    box-shadow: 0 0 60px rgba(255,176,0,0.12);
+  }
+  .modal-header {
+    font-family: 'VT323', monospace; font-size: 1.4rem; letter-spacing: 0.2em;
+    border-bottom: 1px solid var(--amber-dim); padding-bottom: 6px;
+  }
+  #modal-video-title {
+    font-size: 0.95rem; color: var(--amber); line-height: 1.4;
+  }
+  #modal-meta { font-size: 0.8rem; color: var(--amber-dim); }
+  #modal-ai-status {
+    font-size: 0.78rem; color: var(--amber-dim); min-height: 1.2em; letter-spacing: 0.1em;
+  }
+  #modal-ai-status.classifying { animation: pulse 1.2s ease-in-out infinite; }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  #modal-reasoning { font-size: 0.78rem; color: var(--amber-dim); font-style: italic; display: none; }
+  .modal-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .modal-queue-btn {
+    flex: 2; padding: 10px; border: 1px solid var(--amber);
+    background: var(--amber-faint); color: var(--amber); cursor: pointer;
+    font-family: 'VT323', monospace; font-size: 1.3rem; letter-spacing: 0.2em;
+    transition: all 0.1s;
+  }
+  .modal-queue-btn:hover { background: var(--amber); color: var(--dark); }
+  .modal-queue-btn:disabled { opacity: 0.4; cursor: default; background: transparent; }
+  .modal-cancel-btn {
+    flex: 1; padding: 10px; border: 1px solid var(--amber-dim);
+    background: transparent; color: var(--amber-dim); cursor: pointer;
+    font-family: inherit; font-size: 0.85rem; letter-spacing: 0.15em;
+    transition: all 0.1s;
+  }
+  .modal-cancel-btn:hover { border-color: var(--red-bright); color: var(--red-bright); }
 
   /* ── Right panel: queue ── */
   .panel-queue {
@@ -234,7 +268,6 @@
     </div>
 
     <button class="analyze-btn" onclick="analyzeUrl()" id="analyze-btn">⚡ ANALYZE URL</button>
-    <div id="ai-result"></div>
 
     <!-- Playlist toggle (YouTube only) -->
     <div id="playlist-toggle">
@@ -291,6 +324,36 @@
   </div>
 </main>
 
+<div id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div id="modal">
+    <div class="modal-header">// CONFIRM QUEUE //</div>
+    <div id="modal-video-title"></div>
+    <div id="modal-meta"></div>
+    <div>
+      <label>CATEGORY</label>
+      <select id="modal-category">
+        {% for cat in categories %}
+        <option value="{{ cat }}">{{ cat.replace('_', ' ').upper() }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>LENGTH</label>
+      <div class="length-group" id="modal-length-group">
+        <button class="len-btn" onclick="setModalLength('short')">SHORT &lt;5m</button>
+        <button class="len-btn" onclick="setModalLength('medium')">MEDIUM 5-30m</button>
+        <button class="len-btn" onclick="setModalLength('long')">LONG &gt;30m</button>
+      </div>
+    </div>
+    <div id="modal-ai-status"></div>
+    <div id="modal-reasoning"></div>
+    <div class="modal-actions">
+      <button class="modal-queue-btn" id="modal-queue-btn" onclick="queueFromModal()">▶ QUEUE IT</button>
+      <button class="modal-cancel-btn" onclick="closeModal()">✕ CANCEL</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const BASE = '{{ base_path }}';
 const headers = () => ({ 'Content-Type': 'application/json' });
@@ -300,6 +363,7 @@ let currentSource = 'youtube';
 let currentLength = 'auto';
 let expandedLogIds = new Set();
 let logIntervals = {};
+let modalSource = '', modalUrl = '', modalLength = 'medium';
 
 function setSource(s) {
   currentSource = s;
@@ -325,60 +389,125 @@ function msg(text, type) {
   el.className = type;
 }
 
+function formatDuration(s) {
+  if (!s) return 'unknown duration';
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+function setModalLength(l) {
+  modalLength = l;
+  document.querySelectorAll('#modal-length-group .len-btn').forEach((b, i) => {
+    b.classList.toggle('active', ['short','medium','long'][i] === l);
+  });
+}
+
+function openModal(title, durationSeconds, length) {
+  document.getElementById('modal-video-title').textContent = title || '(untitled)';
+  document.getElementById('modal-meta').textContent = formatDuration(durationSeconds);
+  document.getElementById('modal-category').value = '{{ categories[0] }}';
+  setModalLength(length || 'medium');
+  const status = document.getElementById('modal-ai-status');
+  status.textContent = '⚡ AI CLASSIFYING...';
+  status.className = 'classifying';
+  document.getElementById('modal-reasoning').style.display = 'none';
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function fillModalAI(category, length, reasoning) {
+  if (category) document.getElementById('modal-category').value = category;
+  if (length && length !== 'unknown') setModalLength(length);
+  const status = document.getElementById('modal-ai-status');
+  status.textContent = '✓ AI CLASSIFIED';
+  status.className = '';
+  const r = document.getElementById('modal-reasoning');
+  if (reasoning) { r.textContent = reasoning; r.style.display = 'block'; }
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+
+async function queueFromModal() {
+  const btn = document.getElementById('modal-queue-btn');
+  btn.disabled = true;
+  try {
+    const body = {
+      source: modalSource,
+      urls: [modalUrl],
+      category: document.getElementById('modal-category').value,
+      length: modalLength,
+      playlist: false,
+    };
+    const res = await fetch(url('/api/submit'), { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) { msg('ERROR: ' + (data.error || res.status), 'err'); return; }
+    closeModal();
+    document.getElementById('url-input').value = '';
+    msg(`QUEUED ${data.queued} JOB${data.queued !== 1 ? 'S' : ''}`, 'ok');
+    refreshQueue();
+  } catch (e) {
+    msg('REQUEST FAILED: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function analyzeUrl() {
   const rawUrl = document.getElementById('url-input').value.trim();
   if (!rawUrl) { msg('ENTER A URL FIRST', 'err'); return; }
 
   const btn = document.getElementById('analyze-btn');
-  const resultEl = document.getElementById('ai-result');
   btn.disabled = true;
-  btn.textContent = '⚡ ANALYZING...';
-  resultEl.className = 'loading';
-  resultEl.innerHTML = '<div>FETCHING METADATA + RUNNING AI CLASSIFICATION...</div>';
+  btn.textContent = '⚡ FETCHING...';
   msg('', '');
 
   try {
-    const res = await fetch(url('/api/analyze'), {
-      method: 'POST',
-      headers: headers(),
+    // Phase 1: fast title + duration
+    const qRes = await fetch(url('/api/quickmeta'), {
+      method: 'POST', headers: headers(),
       body: JSON.stringify({ source: currentSource, url: rawUrl }),
     });
-    if (!res.ok) {
-      let errMsg = res.status;
-      try { const d = await res.json(); errMsg = d.error || res.status; } catch {}
-      resultEl.className = '';
-      resultEl.style.display = 'none';
-      msg('ANALYZE ERROR: ' + errMsg, 'err');
+    if (!qRes.ok) {
+      let errMsg = qRes.status;
+      try { const d = await qRes.json(); errMsg = d.error || qRes.status; } catch {}
+      msg('ERROR: ' + errMsg, 'err');
       return;
     }
-    const data = await res.json();
+    const qData = await qRes.json();
+    modalSource = currentSource;
+    modalUrl = rawUrl;
+    openModal(qData.title, qData.duration_seconds, qData.length);
 
-    // Pre-fill category
-    const catSelect = document.getElementById('category');
-    if (data.category) catSelect.value = data.category;
-
-    // Pre-fill length
-    const detectedLength = (data.length && data.length !== 'unknown') ? data.length : 'auto';
-    setLength(detectedLength);
-
-    // Show result summary
-    const dur = data.duration_seconds
-      ? ` · ${Math.round(data.duration_seconds / 60)}m`
-      : '';
-    resultEl.innerHTML =
-      `<div class="ai-title">${escHtml(data.title || rawUrl)}</div>` +
-      `<div>${escHtml(data.category.replace(/_/g,' ').toUpperCase())} · ${detectedLength.toUpperCase()}${dur}</div>` +
-      `<div class="ai-reasoning">${escHtml(data.reasoning || '')}</div>`;
-    resultEl.className = '';
-    resultEl.style.display = 'block';
+    // Phase 2: AI classification fills in modal as it arrives
+    fetch(url('/api/analyze'), {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ source: currentSource, url: rawUrl }),
+    }).then(r => r.json()).then(data => {
+      if (!document.getElementById('modal-overlay').classList.contains('open')) return;
+      if (data.error) {
+        const s = document.getElementById('modal-ai-status');
+        s.textContent = 'AI: ' + data.error; s.className = '';
+        return;
+      }
+      const len = (data.length && data.length !== 'unknown') ? data.length : modalLength;
+      fillModalAI(data.category, len, data.reasoning);
+    }).catch(() => {
+      const s = document.getElementById('modal-ai-status');
+      if (s) { s.textContent = 'AI unavailable'; s.className = ''; }
+    });
 
   } catch (e) {
-    msg('ANALYZE FAILED: ' + e.message, 'err');
+    msg('ERROR: ' + e.message, 'err');
   } finally {
     btn.disabled = false;
     btn.textContent = '⚡ ANALYZE URL';
   }
 }
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 async function submitJob() {
   const btn = document.querySelector('.submit-btn');
