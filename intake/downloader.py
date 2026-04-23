@@ -16,6 +16,19 @@ def _log_path(job_id):
     return os.path.join(LOG_DIR, f"job_{job_id}.log")
 
 
+def resolve_youtube_oembed(url):
+    """
+    Return (title, None) using YouTube's oEmbed endpoint — instant, no API key.
+    Duration is not available via oEmbed; returns None.
+    """
+    import urllib.request
+    import urllib.parse
+    api = "https://www.youtube.com/oembed?format=json&url=" + urllib.parse.quote(url, safe="")
+    with urllib.request.urlopen(api, timeout=10) as resp:
+        data = json.loads(resp.read())
+    return data.get("title", url), None
+
+
 def resolve_youtube_metadata(url):
     """
     Return (title, duration_seconds) for a single YouTube URL.

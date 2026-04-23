@@ -69,7 +69,7 @@ def api_quickmeta():
 
     try:
         if source == "youtube":
-            title, duration = downloader.resolve_youtube_metadata(raw_url)
+            title, duration = downloader.resolve_youtube_oembed(raw_url)
         else:
             identifier = downloader.parse_ia_identifier(raw_url)
             if not identifier:

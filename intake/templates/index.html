@@ -406,7 +406,7 @@ function setModalLength(l) {
 
 function openModal(title, durationSeconds, length) {
   document.getElementById('modal-video-title').textContent = title || '(untitled)';
-  document.getElementById('modal-meta').textContent = formatDuration(durationSeconds);
+  document.getElementById('modal-meta').textContent = durationSeconds ? formatDuration(durationSeconds) : 'duration: calculating...';
   document.getElementById('modal-category').value = '{{ categories[0] }}';
   setModalLength(length || 'medium');
   const status = document.getElementById('modal-ai-status');
@@ -416,9 +416,10 @@ function openModal(title, durationSeconds, length) {
   document.getElementById('modal-overlay').classList.add('open');
 }
 
-function fillModalAI(category, length, reasoning) {
+function fillModalAI(category, length, reasoning, durationSeconds) {
   if (category) document.getElementById('modal-category').value = category;
   if (length && length !== 'unknown') setModalLength(length);
+  if (durationSeconds) document.getElementById('modal-meta').textContent = formatDuration(durationSeconds);
   const status = document.getElementById('modal-ai-status');
   status.textContent = '✓ AI CLASSIFIED';
   status.className = '';
@@ -493,7 +494,7 @@ async function analyzeUrl() {
         return;
       }
       const len = (data.length && data.length !== 'unknown') ? data.length : modalLength;
-      fillModalAI(data.category, len, data.reasoning);
+      fillModalAI(data.category, len, data.reasoning, data.duration_seconds);
     }).catch(() => {
       const s = document.getElementById('modal-ai-status');
       if (s) { s.textContent = 'AI unavailable'; s.className = ''; }
