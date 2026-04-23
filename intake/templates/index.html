@@ -174,6 +174,18 @@
     color: var(--amber-dim); cursor: pointer; font-family: inherit; font-size: 0.8rem; letter-spacing: 0.15em;
   }
   .new-cat-reject:hover { border-color: var(--amber); color: var(--amber); }
+  .new-cat-input-row { display:none; margin-top:4px; gap:4px; }
+  .new-cat-check-btn {
+    padding: 4px 10px; border: 1px solid var(--amber-dim); background: transparent;
+    color: var(--amber); cursor: pointer; font-family: inherit; font-size: 1rem; flex-shrink:0;
+  }
+  .new-cat-check-btn:hover { border-color: var(--amber); background: var(--amber-faint); }
+  .new-cat-confirm {
+    display:none; margin-top:6px; padding: 8px 10px;
+    border: 1px solid var(--amber); background: var(--amber-faint);
+    font-size: 0.85rem; letter-spacing: 0.08em;
+  }
+  .new-cat-confirm .slug { color: var(--amber); font-weight: bold; letter-spacing: 0.15em; }
   .modal-actions { display: flex; gap: 8px; margin-top: 4px; }
   .modal-queue-btn {
     flex: 2; padding: 10px; border: 1px solid var(--amber);
@@ -301,15 +313,24 @@
     <!-- Category -->
     <div>
       <label>CATEGORY</label>
-      <select id="category" onchange="handleCategoryChange(this, 'new-category-input')">
+      <select id="category" onchange="handleCategoryChange(this, 'main-new-cat-row')">
         {% for cat in categories %}
         <option value="{{ cat }}">{{ cat.replace('_', ' ').upper() }}</option>
         {% endfor %}
         <option value="__new__">＋ ADD NEW CATEGORY...</option>
       </select>
-      <input type="text" id="new-category-input" placeholder="new_category_name"
-        style="display:none;margin-top:4px"
-        onkeydown="if(event.key==='Enter')commitNewCategory(this,'category')">
+      <div id="main-new-cat-row" class="new-cat-input-row">
+        <input type="text" id="new-category-input" placeholder="new_category_name" style="flex:1"
+          onkeydown="if(event.key==='Enter')proposeCategory('main')">
+        <button class="new-cat-check-btn" onclick="proposeCategory('main')">✓</button>
+      </div>
+      <div id="main-new-cat-confirm" class="new-cat-confirm">
+        ADD NEW CATEGORY: <span class="slug" id="main-pending-slug-display"></span>?
+        <div class="new-cat-actions">
+          <button class="new-cat-accept" onclick="confirmCategory('main')">OK</button>
+          <button class="new-cat-reject" onclick="cancelCategory('main')">CANCEL</button>
+        </div>
+      </div>
     </div>
 
     <!-- Length -->
@@ -358,15 +379,24 @@
     <div id="modal-meta"></div>
     <div>
       <label>CATEGORY</label>
-      <select id="modal-category" onchange="handleCategoryChange(this, 'modal-new-category-input')">
+      <select id="modal-category" onchange="handleCategoryChange(this, 'modal-new-cat-row')">
         {% for cat in categories %}
         <option value="{{ cat }}">{{ cat.replace('_', ' ').upper() }}</option>
         {% endfor %}
         <option value="__new__">＋ ADD NEW CATEGORY...</option>
       </select>
-      <input type="text" id="modal-new-category-input" placeholder="new_category_name"
-        style="display:none;margin-top:4px"
-        onkeydown="if(event.key==='Enter')commitNewCategory(this,'modal-category')">
+      <div id="modal-new-cat-row" class="new-cat-input-row">
+        <input type="text" id="modal-new-category-input" placeholder="new_category_name" style="flex:1"
+          onkeydown="if(event.key==='Enter')proposeCategory('modal')">
+        <button class="new-cat-check-btn" onclick="proposeCategory('modal')">✓</button>
+      </div>
+      <div id="modal-new-cat-confirm" class="new-cat-confirm">
+        ADD NEW CATEGORY: <span class="slug" id="modal-pending-slug-display"></span>?
+        <div class="new-cat-actions">
+          <button class="new-cat-accept" onclick="confirmCategory('modal')">OK</button>
+          <button class="new-cat-reject" onclick="cancelCategory('modal')">CANCEL</button>
+        </div>
+      </div>
     </div>
     <div>
       <label>LENGTH</label>
@@ -443,20 +473,47 @@ function addCategoryToSelect(selectId, catName) {
   return slug;
 }
 
-function handleCategoryChange(sel, inputId) {
-  const inp = document.getElementById(inputId);
+const _pendingSlug = { main: '', modal: '' };
+
+function handleCategoryChange(sel, rowId) {
+  const ns = rowId.startsWith('modal') ? 'modal' : 'main';
+  const row = document.getElementById(rowId);
+  const confirm = document.getElementById(ns + '-new-cat-confirm');
   if (sel.value === '__new__') {
-    inp.style.display = 'block';
-    inp.value = '';
-    inp.focus();
+    row.style.display = 'flex';
+    confirm.style.display = 'none';
+    row.querySelector('input').value = '';
+    row.querySelector('input').focus();
   } else {
-    inp.style.display = 'none';
+    row.style.display = 'none';
+    confirm.style.display = 'none';
   }
 }
 
-function commitNewCategory(inp, selectId) {
-  const slug = addCategoryToSelect(selectId, inp.value);
-  if (slug) inp.style.display = 'none';
+function proposeCategory(ns) {
+  const inp = document.getElementById(ns + '-new-category-input');
+  const slug = inp.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  if (!slug) { inp.focus(); return; }
+  _pendingSlug[ns] = slug;
+  document.getElementById(ns + '-new-cat-row').style.display = 'none';
+  document.getElementById(ns + '-pending-slug-display').textContent = slug.replace(/_/g, ' ').toUpperCase();
+  document.getElementById(ns + '-new-cat-confirm').style.display = 'block';
+}
+
+function confirmCategory(ns) {
+  const slug = _pendingSlug[ns];
+  if (!slug) return;
+  addCategoryToSelect('category', slug);
+  addCategoryToSelect('modal-category', slug);
+  document.getElementById(ns + '-new-cat-confirm').style.display = 'none';
+  _pendingSlug[ns] = '';
+}
+
+function cancelCategory(ns) {
+  document.getElementById(ns + '-new-cat-confirm').style.display = 'none';
+  const row = document.getElementById(ns + '-new-cat-row');
+  row.style.display = 'flex';
+  row.querySelector('input').focus();
 }
 
 function formatDuration(s) {
@@ -485,6 +542,8 @@ function openModal(title, durationSeconds, length) {
   document.getElementById('modal-reasoning').style.display = 'none';
   document.getElementById('modal-new-category').style.display = 'none';
   _pendingNewCategory = '';
+  document.getElementById('modal-new-cat-row').style.display = 'none';
+  document.getElementById('modal-new-cat-confirm').style.display = 'none';
   document.getElementById('modal-error').style.display = 'none';
   document.getElementById('modal-overlay').classList.add('open');
 }
@@ -543,20 +602,11 @@ function modalError(text) {
 }
 
 async function queueFromModal() {
-  let cat = document.getElementById('modal-category').value;
+  const cat = document.getElementById('modal-category').value;
   if (cat === '__new__') {
-    const inp = document.getElementById('modal-new-category-input');
-    if (inp.value.trim()) {
-      // auto-commit whatever they typed
-      cat = addCategoryToSelect('modal-category', inp.value);
-      inp.style.display = 'none';
-      if (!cat) { modalError('INVALID CATEGORY NAME'); return; }
-    } else {
-      inp.style.display = 'block';
-      inp.focus();
-      modalError('TYPE A CATEGORY NAME AND PRESS ENTER');
-      return;
-    }
+    modalError('CONFIRM THE NEW CATEGORY NAME FIRST');
+    proposeCategory('modal');
+    return;
   }
   document.getElementById('modal-error').style.display = 'none';
   const btn = document.getElementById('modal-queue-btn');
