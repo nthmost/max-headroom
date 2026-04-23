@@ -349,8 +349,13 @@ async function analyzeUrl() {
       headers: headers(),
       body: JSON.stringify({ source: currentSource, url: rawUrl }),
     });
+    if (!res.ok) {
+      let errMsg = res.status;
+      try { const d = await res.json(); errMsg = d.error || res.status; } catch {}
+      msg('ANALYZE ERROR: ' + errMsg, 'err');
+      return;
+    }
     const data = await res.json();
-    if (!res.ok) { msg('ANALYZE ERROR: ' + (data.error || res.status), 'err'); return; }
 
     // Pre-fill category
     const catSelect = document.getElementById('category');
