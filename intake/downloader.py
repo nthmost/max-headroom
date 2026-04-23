@@ -23,7 +23,7 @@ def resolve_youtube_metadata(url):
     """
     result = subprocess.run(
         [YT_DLP, "--no-playlist", "--print", "%(title)s\t%(duration)s", url],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True, text=True, timeout=60,
     )
     line = result.stdout.strip().split("\n")[0]
     parts = line.split("\t")
