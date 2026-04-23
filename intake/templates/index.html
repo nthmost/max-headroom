@@ -535,13 +535,20 @@ function closeModal() {
 }
 
 async function queueFromModal() {
+  const cat = document.getElementById('modal-category').value;
+  if (cat === '__new__') {
+    const inp = document.getElementById('modal-new-category-input');
+    inp.style.display = 'block';
+    inp.focus();
+    return;
+  }
   const btn = document.getElementById('modal-queue-btn');
   btn.disabled = true;
   try {
     const body = {
       source: modalSource,
       urls: [modalUrl],
-      category: document.getElementById('modal-category').value,
+      category: cat,
       length: modalLength,
       playlist: false,
     };
