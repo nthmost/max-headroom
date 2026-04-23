@@ -72,7 +72,11 @@ def classify(metadata: dict) -> dict:
         )
 
         text = message.content[0].text.strip()
-        result = json.loads(text)
+        # Extract JSON object if the model wrapped it in prose
+        m = __import__('re').search(r'\{.*\}', text, __import__('re').DOTALL)
+        if not m:
+            raise ValueError(f"No JSON in response: {text[:200]!r}")
+        result = json.loads(m.group(0))
 
         cat = result.get("category", "")
         is_new = result.get("is_new_category", False) or (cat not in CATEGORIES)
