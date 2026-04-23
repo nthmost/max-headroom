@@ -1,0 +1,17 @@
+[Unit]
+Description=MHBN Media Intake Web App
+After=network.target
+
+[Service]
+User=max
+Group=max
+WorkingDirectory=/home/max/intake
+Environment=INTAKE_API_KEY=changeme
+ExecStart=/usr/bin/python3 /home/max/intake/intake.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

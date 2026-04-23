@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MHBN // INTAKE STATION</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --amber: #FFB000;
+    --amber-dim: #7a5200;
+    --amber-faint: #3a2000;
+    --green: #00FF88;
+    --green-dim: #007a40;
+    --red-bright: #FF2200;
+    --dark: #080800;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--dark);
+    color: var(--amber);
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    min-height: 100vh;
+    animation: flicker 8s infinite;
+  }
+  @keyframes flicker {
+    0%, 97%, 100% { opacity: 1; }
+    97.5% { opacity: 0.94; }
+    98%   { opacity: 1; }
+    98.8% { opacity: 0.96; }
+    99%   { opacity: 1; }
+  }
+
+  .scanner {
+    height: 4px; background: var(--dark); position: relative; overflow: hidden;
+    border-bottom: 1px solid #220000;
+  }
+  .scanner::after {
+    content: ''; position: absolute; top: 0; height: 100%; width: 120px;
+    background: linear-gradient(90deg, transparent, var(--red-bright), #FF6600, var(--red-bright), transparent);
+    animation: scan 2.2s ease-in-out infinite alternate;
+    box-shadow: 0 0 18px 6px var(--red-bright);
+  }
+  @keyframes scan { from { left: -120px; } to { left: 100%; } }
+
+  header {
+    padding: 14px 28px 10px;
+    border-bottom: 1px solid var(--amber-dim);
+    display: flex; align-items: baseline; gap: 20px; flex-wrap: wrap;
+  }
+  header h1 { font-family: 'VT323', monospace; font-size: 2rem; letter-spacing: 0.08em; }
+  header .sub { font-size: 0.65rem; letter-spacing: 0.25em; color: var(--amber-dim); }
+
+  main {
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 0;
+    height: calc(100vh - 60px);
+  }
+
+  /* ── Left panel: submit form ── */
+  .panel-submit {
+    border-right: 1px solid var(--amber-dim);
+    padding: 20px 24px;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 18px;
+  }
+
+  .panel-title {
+    font-size: 0.65rem; letter-spacing: 0.3em; color: var(--amber-dim);
+    border-bottom: 1px solid var(--amber-faint);
+    padding-bottom: 6px;
+  }
+
+  .source-tabs { display: flex; gap: 2px; }
+  .tab {
+    flex: 1; padding: 6px 4px; border: 1px solid var(--amber-dim);
+    background: transparent; color: var(--amber-dim); cursor: pointer;
+    font-family: inherit; font-size: 0.65rem; letter-spacing: 0.15em;
+    transition: all 0.1s;
+  }
+  .tab.active { border-color: var(--amber); color: var(--amber); background: var(--amber-faint); }
+  .tab:hover:not(.active) { border-color: var(--amber); color: var(--amber); }
+
+  label { display: block; font-size: 0.6rem; letter-spacing: 0.2em; color: var(--amber-dim); margin-bottom: 4px; }
+
+  input[type=text], select, textarea {
+    width: 100%; padding: 7px 10px;
+    background: #0d0d00; border: 1px solid var(--amber-dim);
+    color: var(--amber); font-family: inherit; font-size: 0.75rem;
+    outline: none; resize: vertical;
+  }
+  input[type=text]:focus, select:focus, textarea:focus { border-color: var(--amber); }
+  select option { background: #0d0d00; }
+
+  .length-group { display: flex; gap: 4px; }
+  .len-btn {
+    flex: 1; padding: 6px 2px; border: 1px solid var(--amber-dim);
+    background: transparent; color: var(--amber-dim); cursor: pointer;
+    font-family: inherit; font-size: 0.6rem; letter-spacing: 0.15em;
+    transition: all 0.1s;
+  }
+  .len-btn.active { border-color: var(--amber); color: var(--amber); background: var(--amber-faint); }
+  .len-btn:hover:not(.active) { border-color: var(--amber); color: var(--amber); }
+
+  #playlist-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.65rem; color: var(--amber-dim); }
+  #playlist-toggle input { width: auto; }
+
+  .dropzone {
+    border: 1px dashed var(--amber-dim); padding: 20px;
+    text-align: center; font-size: 0.65rem; letter-spacing: 0.2em;
+    color: var(--amber-dim); cursor: pointer; transition: all 0.2s;
+  }
+  .dropzone.dragover { border-color: var(--amber); color: var(--amber); background: var(--amber-faint); }
+  .dropzone input[type=file] { display: none; }
+
+  #file-info { font-size: 0.65rem; color: var(--green); min-height: 1.2em; }
+
+  .submit-btn {
+    width: 100%; padding: 10px; border: 1px solid var(--amber);
+    background: var(--amber-faint); color: var(--amber); cursor: pointer;
+    font-family: 'VT323', monospace; font-size: 1.3rem; letter-spacing: 0.2em;
+    transition: all 0.1s;
+  }
+  .submit-btn:hover { background: var(--amber); color: var(--dark); }
+  .submit-btn:disabled { opacity: 0.4; cursor: default; background: transparent; }
+
+  #submit-msg { font-size: 0.65rem; min-height: 1.2em; letter-spacing: 0.1em; }
+  #submit-msg.ok { color: var(--green); }
+  #submit-msg.err { color: var(--red-bright); }
+
+  /* ── Right panel: queue ── */
+  .panel-queue {
+    padding: 20px 24px;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+
+  .section-title {
+    font-size: 0.6rem; letter-spacing: 0.3em; color: var(--amber-dim);
+    border-bottom: 1px solid var(--amber-faint); padding-bottom: 4px;
+    display: flex; justify-content: space-between;
+  }
+
+  .job-list { display: flex; flex-direction: column; gap: 4px; }
+
+  .job-row {
+    border: 1px solid var(--amber-faint); padding: 7px 10px;
+    display: flex; flex-direction: column; gap: 3px;
+    font-size: 0.7rem; cursor: pointer;
+  }
+  .job-row:hover { border-color: var(--amber-dim); }
+  .job-row.running { border-color: var(--green); }
+  .job-row.failed { border-color: var(--red-bright); }
+  .job-row.done { opacity: 0.6; }
+
+  .job-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .job-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job-badge {
+    font-size: 0.55rem; letter-spacing: 0.15em; padding: 1px 5px; border: 1px solid;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .badge-running { color: var(--green); border-color: var(--green); }
+  .badge-pending { color: var(--amber-dim); border-color: var(--amber-dim); }
+  .badge-done { color: var(--amber-dim); border-color: var(--amber-faint); }
+  .badge-failed { color: var(--red-bright); border-color: var(--red-bright); }
+  .badge-cancelled { color: var(--amber-dim); border-color: var(--amber-faint); }
+
+  .job-meta { font-size: 0.58rem; color: var(--amber-dim); }
+
+  .cancel-btn {
+    font-size: 0.55rem; padding: 1px 6px; border: 1px solid var(--amber-dim);
+    background: transparent; color: var(--amber-dim); cursor: pointer; font-family: inherit;
+  }
+  .cancel-btn:hover { border-color: var(--red-bright); color: var(--red-bright); }
+
+  .log-pane {
+    display: none; background: #000; border: 1px solid var(--amber-faint);
+    padding: 8px; margin-top: 4px;
+    max-height: 200px; overflow-y: auto;
+  }
+  .log-pane.open { display: block; }
+  .log-pane pre { font-size: 0.6rem; color: var(--green-dim); white-space: pre-wrap; word-break: break-all; }
+
+  .empty-msg { font-size: 0.65rem; color: var(--amber-faint); letter-spacing: 0.15em; padding: 8px 0; }
+
+  @media (max-width: 800px) {
+    main { grid-template-columns: 1fr; height: auto; }
+    .panel-submit { border-right: none; border-bottom: 1px solid var(--amber-dim); }
+  }
+</style>
+</head>
+<body>
+
+<div class="scanner"></div>
+
+<header>
+  <h1>MHBN</h1>
+  <span class="sub">// INTAKE STATION //</span>
+</header>
+
+<main>
+
+  <!-- ── Submit panel ── -->
+  <div class="panel-submit">
+
+    <div class="panel-title">ADD TO QUEUE</div>
+
+    <!-- Source type tabs -->
+    <div>
+      <label>SOURCE TYPE</label>
+      <div class="source-tabs">
+        <button class="tab active" onclick="setSource('youtube')">YOUTUBE</button>
+        <button class="tab" onclick="setSource('ia')">INTERNET ARCHIVE</button>
+        <button class="tab" onclick="setSource('file')">PLAYLIST FILE</button>
+      </div>
+    </div>
+
+    <!-- URL input (YouTube + IA) -->
+    <div id="url-section">
+      <label id="url-label">YOUTUBE URL</label>
+      <input type="text" id="url-input" placeholder="https://youtube.com/watch?v=..." autocomplete="off">
+    </div>
+
+    <!-- Playlist toggle (YouTube only) -->
+    <div id="playlist-toggle">
+      <input type="checkbox" id="is-playlist">
+      <span>PLAYLIST URL (expand all videos)</span>
+    </div>
+
+    <!-- File drop zone -->
+    <div id="file-section" style="display:none">
+      <label>DROP PLAYLIST FILE (.m3u, .txt)</label>
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()"
+           ondragover="event.preventDefault(); this.classList.add('dragover')"
+           ondragleave="this.classList.remove('dragover')"
+           ondrop="handleFileDrop(event)">
+        DROP FILE HERE OR CLICK TO BROWSE
+        <input type="file" id="file-input" accept=".m3u,.m3u8,.txt" onchange="handleFileSelect(event)">
+      </div>
+      <div id="file-info"></div>
+    </div>
+
+    <!-- Category -->
+    <div>
+      <label>CATEGORY</label>
+      <select id="category">
+        {% for cat in categories %}
+        <option value="{{ cat }}">{{ cat.replace('_', ' ').upper() }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Length -->
+    <div>
+      <label>LENGTH</label>
+      <div class="length-group">
+        <button class="len-btn active" onclick="setLength('auto')">AUTO</button>
+        <button class="len-btn" onclick="setLength('short')">SHORT &lt;5m</button>
+        <button class="len-btn" onclick="setLength('medium')">MEDIUM 5-30m</button>
+        <button class="len-btn" onclick="setLength('long')">LONG &gt;30m</button>
+      </div>
+    </div>
+
+    <button class="submit-btn" onclick="submitJob()">▶ QUEUE IT</button>
+    <div id="submit-msg"></div>
+
+  </div>
+
+  <!-- ── Queue panel ── -->
+  <div class="panel-queue">
+
+    <div>
+      <div class="section-title">
+        <span>ACTIVE / PENDING</span>
+        <span id="queue-count"></span>
+      </div>
+      <div class="job-list" id="queue-list">
+        <div class="empty-msg">NO JOBS QUEUED</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title"><span>RECENT</span></div>
+      <div class="job-list" id="recent-list">
+        <div class="empty-msg">NO COMPLETED JOBS</div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+const API_KEY = (() => {
+  let k = localStorage.getItem('intake_api_key');
+  if (!k) {
+    k = prompt('INTAKE API KEY:');
+    if (k) localStorage.setItem('intake_api_key', k);
+  }
+  return k || '';
+})();
+
+const headers = () => ({ 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY });
+
+let currentSource = 'youtube';
+let currentLength = 'auto';
+let pendingFileUrls = [];
+let expandedLogIds = new Set();
+let logIntervals = {};
+
+function setSource(s) {
+  currentSource = s;
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', ['youtube','ia','file'][i] === s);
+  });
+  document.getElementById('url-section').style.display = s === 'file' ? 'none' : '';
+  document.getElementById('playlist-toggle').style.display = s === 'youtube' ? '' : 'none';
+  document.getElementById('file-section').style.display = s === 'file' ? '' : 'none';
+  document.getElementById('url-label').textContent = s === 'ia' ? 'ARCHIVE.ORG IDENTIFIER OR URL' : 'YOUTUBE URL';
+  document.getElementById('url-input').placeholder = s === 'ia'
+    ? 'archive.org/details/… or identifier' : 'https://youtube.com/watch?v=…';
+}
+
+function setLength(l) {
+  currentLength = l;
+  document.querySelectorAll('.len-btn').forEach((b, i) => {
+    b.classList.toggle('active', ['auto','short','medium','long'][i] === l);
+  });
+}
+
+function msg(text, type) {
+  const el = document.getElementById('submit-msg');
+  el.textContent = text;
+  el.className = type;
+}
+
+async function submitJob() {
+  const btn = document.querySelector('.submit-btn');
+  btn.disabled = true;
+  msg('PROCESSING...', '');
+
+  try {
+    let body;
+
+    if (currentSource === 'file') {
+      if (!pendingFileUrls.length) { msg('NO FILE LOADED', 'err'); return; }
+      body = {
+        source: 'playlist_file',
+        urls: pendingFileUrls,
+        category: document.getElementById('category').value,
+        length: currentLength,
+      };
+    } else if (currentSource === 'ia') {
+      const url = document.getElementById('url-input').value.trim();
+      if (!url) { msg('ENTER AN IDENTIFIER', 'err'); return; }
+      body = { source: 'ia', urls: [url], category: document.getElementById('category').value, length: currentLength };
+    } else {
+      const url = document.getElementById('url-input').value.trim();
+      if (!url) { msg('ENTER A URL', 'err'); return; }
+      body = {
+        source: 'youtube',
+        urls: [url],
+        playlist: document.getElementById('is-playlist').checked,
+        category: document.getElementById('category').value,
+        length: currentLength,
+      };
+    }
+
+    const res = await fetch('/api/submit', { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) { msg('ERROR: ' + (data.error || res.status), 'err'); return; }
+
+    msg(`QUEUED ${data.queued} JOB${data.queued !== 1 ? 'S' : ''}`, 'ok');
+    document.getElementById('url-input').value = '';
+    pendingFileUrls = [];
+    document.getElementById('file-info').textContent = '';
+    refreshQueue();
+  } catch (e) {
+    msg('REQUEST FAILED: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function parsePlaylistFile(text) {
+  return text.split('\n')
+    .map(l => l.trim())
+    .filter(l => l.startsWith('http'));
+}
+
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  loadFile(file);
+}
+
+function handleFileDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  loadFile(file);
+}
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    pendingFileUrls = parsePlaylistFile(ev.target.result);
+    document.getElementById('file-info').textContent =
+      `LOADED: ${file.name} — ${pendingFileUrls.length} URL${pendingFileUrls.length !== 1 ? 'S' : ''}`;
+  };
+  reader.readAsText(file);
+}
+
+async function cancelJob(id, e) {
+  e.stopPropagation();
+  await fetch(`/api/job/${id}/cancel`, { method: 'POST', headers: headers() });
+  refreshQueue();
+}
+
+function toggleLog(id) {
+  const pane = document.getElementById(`log-${id}`);
+  if (!pane) return;
+  const isOpen = pane.classList.toggle('open');
+  if (isOpen) {
+    expandedLogIds.add(id);
+    fetchLog(id);
+    logIntervals[id] = setInterval(() => fetchLog(id), 2000);
+  } else {
+    expandedLogIds.delete(id);
+    clearInterval(logIntervals[id]);
+    delete logIntervals[id];
+  }
+}
+
+async function fetchLog(id) {
+  const pane = document.getElementById(`log-${id}`);
+  if (!pane) return;
+  try {
+    const res = await fetch(`/api/job/${id}/log?tail=40`, { headers: headers() });
+    const data = await res.json();
+    const pre = pane.querySelector('pre');
+    if (pre) pre.textContent = data.lines.join('\n');
+    pane.scrollTop = pane.scrollHeight;
+  } catch {}
+}
+
+function jobRow(job, showCancel) {
+  const statusBadge = {
+    running: '<span class="job-badge badge-running">▶ RUNNING</span>',
+    pending: '<span class="job-badge badge-pending">⏳ PENDING</span>',
+    done:    '<span class="job-badge badge-done">✓ DONE</span>',
+    failed:  '<span class="job-badge badge-failed">✗ FAILED</span>',
+    cancelled: '<span class="job-badge badge-cancelled">— CANCELLED</span>',
+  }[job.status] || '';
+
+  const cancelBtn = showCancel
+    ? `<button class="cancel-btn" onclick="cancelJob(${job.id}, event)">CANCEL</button>`
+    : '';
+
+  const title = job.title || job.url;
+  const meta = `${job.source.toUpperCase()} · ${job.category.replace(/_/g,' ')} · ${job.length}`;
+  const error = job.error_msg ? `<div class="job-meta" style="color:var(--red-bright)">${escHtml(job.error_msg)}</div>` : '';
+
+  return `
+    <div class="job-row ${job.status}" onclick="toggleLog(${job.id})">
+      <div class="job-top">
+        <span class="job-title">${escHtml(title)}</span>
+        ${statusBadge}
+        ${cancelBtn}
+      </div>
+      <div class="job-meta">${escHtml(meta)}</div>
+      ${error}
+      <div class="log-pane ${expandedLogIds.has(job.id) ? 'open' : ''}" id="log-${job.id}">
+        <pre></pre>
+      </div>
+    </div>`;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function refreshQueue() {
+  try {
+    const [qRes, rRes] = await Promise.all([
+      fetch('/api/queue', { headers: headers() }),
+      fetch('/api/recent', { headers: headers() }),
+    ]);
+    const queue = await qRes.json();
+    const recent = await rRes.json();
+
+    const ql = document.getElementById('queue-list');
+    const qc = document.getElementById('queue-count');
+    if (queue.length === 0) {
+      ql.innerHTML = '<div class="empty-msg">NO JOBS QUEUED</div>';
+      qc.textContent = '';
+    } else {
+      ql.innerHTML = queue.map(j => jobRow(j, j.status === 'running' || j.status === 'pending')).join('');
+      qc.textContent = `${queue.length}`;
+    }
+
+    const rl = document.getElementById('recent-list');
+    if (recent.length === 0) {
+      rl.innerHTML = '<div class="empty-msg">NO COMPLETED JOBS</div>';
+    } else {
+      rl.innerHTML = recent.map(j => jobRow(j, false)).join('');
+    }
+
+    // Refresh open log panes
+    expandedLogIds.forEach(id => {
+      const pane = document.getElementById(`log-${id}`);
+      if (pane && !logIntervals[id]) {
+        logIntervals[id] = setInterval(() => fetchLog(id), 2000);
+      }
+      if (pane) fetchLog(id);
+    });
+  } catch {}
+}
+
+// Poll every 3 seconds
+setInterval(refreshQueue, 3000);
+refreshQueue();
+</script>
+
+</body>
+</html>
