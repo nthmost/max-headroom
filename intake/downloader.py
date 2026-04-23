@@ -7,7 +7,6 @@ import os
 import re
 import subprocess
 import shutil
-import threading
 import time
 import db
 from config import (
@@ -184,18 +183,14 @@ def parse_ia_identifier(url_or_id):
 
 def _check_pipeline(job):
     """
-    Background thread: after a non-IA download completes, wait for inotify/playlist
-    regeneration then confirm the file landed on zikzak and entered a playlist.
-    Updates pipeline_status on the job row accordingly.
+    Check whether a completed job's file has landed on zikzak and entered a playlist.
+    Called by the pipeline poller loop — no sleep, safe to retry.
     """
     job_id = job["id"]
     category = job["category"]
     length = job["length"]
 
-    time.sleep(20)
-
     try:
-        # Check if the destination directory has files for this job
         dest = f"{ZIKZAK_MEDIA}/{category}/{length}/"
         ls_result = subprocess.run(
             [
@@ -207,18 +202,16 @@ def _check_pipeline(job):
             capture_output=True, text=True, timeout=30,
         )
         if ls_result.returncode != 0 or not ls_result.stdout.strip():
-            db.mark_pipeline_status(job_id, "check_failed")
-            return
+            return  # not there yet — poller will retry
 
         db.mark_pipeline_status(job_id, "on_zikzak")
 
-        # Check if any playlist references this category
         playlist_result = subprocess.run(
             [
                 "ssh", "-o", "StrictHostKeyChecking=no",
                 "-J", ZIKZAK_JUMP,
                 f"{ZIKZAK_USER}@{ZIKZAK_HOST}",
-                f"grep -l '{category}' /home/max/playlists/*.m3u 2>/dev/null | wc -l",
+                f"grep -rl '{category}' /home/max/playlists/*.m3u 2>/dev/null | wc -l",
             ],
             capture_output=True, text=True, timeout=30,
         )
@@ -227,7 +220,22 @@ def _check_pipeline(job):
             db.mark_pipeline_status(job_id, "live")
 
     except Exception:
-        db.mark_pipeline_status(job_id, "check_failed")
+        pass  # will retry on next poll
+
+
+def pipeline_poller_loop():
+    """
+    Runs forever in a background thread.
+    Every 30s, checks all done jobs that haven't reached 'live' yet.
+    Catches jobs missed by restarts or timing issues.
+    """
+    while True:
+        time.sleep(30)
+        try:
+            for job in db.get_pipeline_pending():
+                _check_pipeline(job)
+        except Exception:
+            pass
 
 
 def run_job(job):
@@ -259,8 +267,6 @@ def run_job(job):
 
     if returncode == 0:
         db.mark_done(job_id)
-        if job["source"] != "ia":
-            threading.Thread(target=_check_pipeline, args=(job,), daemon=True).start()
     else:
         error_msg = ""
         try:

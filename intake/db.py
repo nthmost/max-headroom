@@ -148,6 +148,18 @@ def get_queue():
         return [dict(r) for r in rows]
 
 
+def get_pipeline_pending():
+    """Done non-IA jobs that haven't reached 'live' pipeline status yet."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT * FROM jobs
+               WHERE status = 'done' AND source != 'ia'
+               AND (pipeline_status IS NULL OR pipeline_status = 'on_zikzak')
+               ORDER BY id ASC"""
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def get_recent(limit=60):
     """Return most recent completed/failed/cancelled jobs."""
     with get_conn() as conn:

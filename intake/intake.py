@@ -239,6 +239,6 @@ def api_job_cancel(job_id):
 
 if __name__ == "__main__":
     db.init_db()
-    t = threading.Thread(target=worker_loop, daemon=True)
-    t.start()
+    threading.Thread(target=worker_loop, daemon=True).start()
+    threading.Thread(target=downloader.pipeline_poller_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT, threaded=True)
