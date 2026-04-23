@@ -294,11 +294,15 @@
     <!-- Category -->
     <div>
       <label>CATEGORY</label>
-      <select id="category">
+      <select id="category" onchange="handleCategoryChange(this, 'new-category-input')">
         {% for cat in categories %}
         <option value="{{ cat }}">{{ cat.replace('_', ' ').upper() }}</option>
         {% endfor %}
+        <option value="__new__">＋ ADD NEW CATEGORY...</option>
       </select>
+      <input type="text" id="new-category-input" placeholder="new_category_name"
+        style="display:none;margin-top:4px"
+        onkeydown="if(event.key==='Enter')commitNewCategory(this,'category')">
     </div>
 
     <!-- Length -->
@@ -347,11 +351,15 @@
     <div id="modal-meta"></div>
     <div>
       <label>CATEGORY</label>
-      <select id="modal-category">
+      <select id="modal-category" onchange="handleCategoryChange(this, 'modal-new-category-input')">
         {% for cat in categories %}
         <option value="{{ cat }}">{{ cat.replace('_', ' ').upper() }}</option>
         {% endfor %}
+        <option value="__new__">＋ ADD NEW CATEGORY...</option>
       </select>
+      <input type="text" id="modal-new-category-input" placeholder="new_category_name"
+        style="display:none;margin-top:4px"
+        onkeydown="if(event.key==='Enter')commitNewCategory(this,'modal-category')">
     </div>
     <div>
       <label>LENGTH</label>
@@ -412,6 +420,37 @@ function msg(text, type) {
   el.className = type;
 }
 
+function addCategoryToSelect(selectId, catName) {
+  const slug = catName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  if (!slug) return null;
+  const sel = document.getElementById(selectId);
+  if (!sel.querySelector(`option[value="${slug}"]`)) {
+    const opt = document.createElement('option');
+    opt.value = slug;
+    opt.textContent = slug.replace(/_/g, ' ').toUpperCase();
+    // Insert before the __new__ option
+    sel.insertBefore(opt, sel.querySelector('option[value="__new__"]'));
+  }
+  sel.value = slug;
+  return slug;
+}
+
+function handleCategoryChange(sel, inputId) {
+  const inp = document.getElementById(inputId);
+  if (sel.value === '__new__') {
+    inp.style.display = 'block';
+    inp.value = '';
+    inp.focus();
+  } else {
+    inp.style.display = 'none';
+  }
+}
+
+function commitNewCategory(inp, selectId) {
+  const slug = addCategoryToSelect(selectId, inp.value);
+  if (slug) inp.style.display = 'none';
+}
+
 function formatDuration(s) {
   if (!s) return 'unknown duration';
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -467,16 +506,8 @@ function fillModalAI(category, isNew, length, reasoning, durationSeconds) {
 }
 
 function acceptNewCategory() {
-  const cat = _pendingNewCategory;
-  if (!cat) return;
-  const sel = document.getElementById('modal-category');
-  if (!sel.querySelector(`option[value="${cat}"]`)) {
-    const opt = document.createElement('option');
-    opt.value = cat;
-    opt.textContent = cat.replace(/_/g, ' ').toUpperCase();
-    sel.appendChild(opt);
-  }
-  sel.value = cat;
+  if (!_pendingNewCategory) return;
+  addCategoryToSelect('modal-category', _pendingNewCategory);
   document.getElementById('modal-new-category').style.display = 'none';
   const status = document.getElementById('modal-ai-status');
   status.textContent = '✓ NEW CATEGORY ACCEPTED';
@@ -586,15 +617,19 @@ async function submitJob() {
     if (currentSource === 'ia') {
       const url = document.getElementById('url-input').value.trim();
       if (!url) { msg('ENTER AN IDENTIFIER', 'err'); return; }
-      body = { source: 'ia', urls: [url], category: document.getElementById('category').value, length: currentLength };
+      const cat = document.getElementById('category').value;
+      if (cat === '__new__') { msg('ENTER A CATEGORY NAME', 'err'); return; }
+      body = { source: 'ia', urls: [url], category: cat, length: currentLength };
     } else {
       const url = document.getElementById('url-input').value.trim();
       if (!url) { msg('ENTER A URL', 'err'); return; }
+      const cat = document.getElementById('category').value;
+      if (cat === '__new__') { msg('ENTER A CATEGORY NAME', 'err'); return; }
       body = {
         source: 'youtube',
         urls: [url],
         playlist: document.getElementById('is-playlist').checked,
-        category: document.getElementById('category').value,
+        category: cat,
         length: currentLength,
       };
     }

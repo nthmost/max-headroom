@@ -13,27 +13,23 @@ _CATEGORY_LIST = "\n".join(f"  - {c}" for c in CATEGORIES)
 _PROMPT_TEMPLATE = """\
 You are a media classifier for a retro-cyberpunk broadcast network.
 
-Given the metadata below, choose the single best category from this list:
+Pick the single best category from this list:
 {categories}
 
-If none of the existing categories fits well, suggest a new one using snake_case.
+Be decisive. Only use an existing category if it genuinely fits.
+If nothing fits well, invent a concise snake_case category name.
 
-Also determine the length bucket based on duration_seconds:
-- short: under 5 minutes (< 300s)
-- medium: 5-30 minutes (300-1799s)
-- long: 30+ minutes (>= 1800s)
-- unknown: if duration is missing or 0
+Length bucket from duration:
+- short < 300s, medium 300-1799s, long >= 1800s, unknown if missing
 
-Respond with ONLY a JSON object on one line:
-{{"category": "<category>", "is_new_category": <true|false>, "length": "<short|medium|long|unknown>", "reasoning": "<one sentence>"}}
-
-Set is_new_category to true only if you invented a category not in the list above.
+Respond with ONLY valid JSON, no prose:
+{{"category": "<name>", "is_new_category": <true|false>, "length": "<short|medium|long|unknown>", "reasoning": "<10 words max>"}}
 
 Title: {title}
 Duration: {duration}s
-Channel/Creator: {channel}
+Channel: {channel}
 Tags: {tags}
-Description (first 300 chars): {description}
+Description: {description}
 """
 
 
