@@ -15,6 +15,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
 import downloader
+import analyzer
 from config import API_KEY, CATEGORIES, LENGTHS, PORT, classify_length
 
 # BASE_PATH allows the app to run behind a reverse proxy at a sub-path.
@@ -63,6 +64,39 @@ def index():
 def api_categories():
     check_auth()
     return jsonify(CATEGORIES)
+
+
+@app.route("/api/analyze", methods=["POST"])
+def api_analyze():
+    check_auth()
+    data = request.get_json(force=True)
+    source = data.get("source")
+    raw_url = data.get("url", "").strip()
+
+    if not raw_url:
+        return jsonify(error="no url provided"), 400
+    if source not in ("youtube", "ia"):
+        return jsonify(error="source must be youtube or ia"), 400
+
+    try:
+        if source == "youtube":
+            metadata = downloader.resolve_youtube_rich_metadata(raw_url)
+        else:
+            identifier = downloader.parse_ia_identifier(raw_url)
+            if not identifier:
+                return jsonify(error=f"not a valid IA identifier: {raw_url}"), 400
+            metadata = downloader.resolve_ia_rich_metadata(identifier)
+
+        result = analyzer.classify(metadata)
+        return jsonify(
+            title=metadata["title"],
+            duration_seconds=metadata.get("duration_seconds"),
+            category=result["category"],
+            length=result["length"],
+            reasoning=result["reasoning"],
+        )
+    except Exception as exc:
+        return jsonify(error=str(exc)), 500
 
 
 @app.route("/api/submit", methods=["POST"])

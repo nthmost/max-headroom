@@ -2,6 +2,7 @@
 Download logic for YouTube (via yt-dlp) and Internet Archive (via ia CLI).
 """
 
+import json
 import os
 import re
 import subprocess
@@ -77,6 +78,71 @@ def resolve_ia_metadata(identifier):
         return title, duration
     except Exception:
         return identifier, None
+
+
+def resolve_youtube_rich_metadata(url):
+    """
+    Return a rich metadata dict for a single YouTube URL using yt-dlp --dump-json.
+    Raises RuntimeError on failure.
+    """
+    result = subprocess.run(
+        [YT_DLP, "--no-playlist", "--skip-download", "--dump-json", url],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip()[:300] or "yt-dlp failed")
+    data = json.loads(result.stdout.strip().split("\n")[0])
+    return {
+        "title": data.get("title", ""),
+        "duration_seconds": data.get("duration"),
+        "description": (data.get("description") or "")[:500],
+        "tags": data.get("tags") or [],
+        "channel": data.get("channel") or data.get("uploader") or "",
+        "uploader": data.get("uploader") or "",
+    }
+
+
+def resolve_ia_rich_metadata(identifier):
+    """
+    Return a rich metadata dict for an Internet Archive identifier.
+    Never raises; returns partial data on error.
+    """
+    try:
+        import internetarchive as ia_lib
+        item = ia_lib.get_item(identifier)
+        meta = item.metadata
+        title = meta.get("title", identifier)
+        description = meta.get("description", "")
+        if isinstance(description, list):
+            description = " ".join(description)
+        subject = meta.get("subject", [])
+        if isinstance(subject, str):
+            subject = [subject]
+        duration = None
+        for f in item.files:
+            if "length" in f:
+                try:
+                    duration = int(float(f["length"]))
+                    break
+                except (ValueError, TypeError):
+                    pass
+        return {
+            "title": title,
+            "duration_seconds": duration,
+            "description": str(description)[:500],
+            "tags": list(subject)[:10],
+            "channel": meta.get("creator", ""),
+            "uploader": meta.get("uploader", ""),
+        }
+    except Exception:
+        return {
+            "title": identifier,
+            "duration_seconds": None,
+            "description": "",
+            "tags": [],
+            "channel": "",
+            "uploader": "",
+        }
 
 
 def parse_ia_identifier(url_or_id):

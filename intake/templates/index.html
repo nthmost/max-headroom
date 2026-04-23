@@ -122,6 +122,23 @@
   #submit-msg.ok { color: var(--green); }
   #submit-msg.err { color: var(--red-bright); }
 
+  .analyze-btn {
+    width: 100%; padding: 6px; border: 1px solid var(--amber-dim);
+    background: transparent; color: var(--amber-dim); cursor: pointer;
+    font-family: inherit; font-size: 0.85rem; letter-spacing: 0.2em;
+    transition: all 0.1s;
+  }
+  .analyze-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .analyze-btn:disabled { opacity: 0.4; cursor: default; }
+
+  #ai-result {
+    display: none; padding: 8px 10px;
+    border: 1px solid var(--amber-faint); background: #0a0a00;
+    font-size: 0.78rem; color: var(--amber-dim); line-height: 1.5;
+  }
+  #ai-result .ai-title { color: var(--amber); font-size: 0.85rem; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #ai-result .ai-reasoning { font-style: italic; }
+
   /* ── Right panel: queue ── */
   .panel-queue {
     padding: 20px 24px;
@@ -213,6 +230,9 @@
       <label id="url-label">YOUTUBE URL</label>
       <input type="text" id="url-input" placeholder="https://youtube.com/watch?v=..." autocomplete="off">
     </div>
+
+    <button class="analyze-btn" onclick="analyzeUrl()" id="analyze-btn">⚡ ANALYZE URL</button>
+    <div id="ai-result"></div>
 
     <!-- Playlist toggle (YouTube only) -->
     <div id="playlist-toggle">
@@ -310,6 +330,52 @@ function msg(text, type) {
   const el = document.getElementById('submit-msg');
   el.textContent = text;
   el.className = type;
+}
+
+async function analyzeUrl() {
+  const rawUrl = document.getElementById('url-input').value.trim();
+  if (!rawUrl) { msg('ENTER A URL FIRST', 'err'); return; }
+
+  const btn = document.getElementById('analyze-btn');
+  const resultEl = document.getElementById('ai-result');
+  btn.disabled = true;
+  btn.textContent = '⚡ ANALYZING...';
+  resultEl.style.display = 'none';
+  msg('', '');
+
+  try {
+    const res = await fetch(url('/api/analyze'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ source: currentSource, url: rawUrl }),
+    });
+    const data = await res.json();
+    if (!res.ok) { msg('ANALYZE ERROR: ' + (data.error || res.status), 'err'); return; }
+
+    // Pre-fill category
+    const catSelect = document.getElementById('category');
+    if (data.category) catSelect.value = data.category;
+
+    // Pre-fill length
+    const detectedLength = (data.length && data.length !== 'unknown') ? data.length : 'auto';
+    setLength(detectedLength);
+
+    // Show result summary
+    const dur = data.duration_seconds
+      ? ` · ${Math.round(data.duration_seconds / 60)}m`
+      : '';
+    resultEl.innerHTML =
+      `<div class="ai-title">${escHtml(data.title || rawUrl)}</div>` +
+      `<div>${escHtml(data.category.replace(/_/g,' ').toUpperCase())} · ${detectedLength.toUpperCase()}${dur}</div>` +
+      `<div class="ai-reasoning">${escHtml(data.reasoning || '')}</div>`;
+    resultEl.style.display = 'block';
+
+  } catch (e) {
+    msg('ANALYZE FAILED: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚡ ANALYZE URL';
+  }
 }
 
 async function submitJob() {
