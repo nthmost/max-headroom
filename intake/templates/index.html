@@ -52,7 +52,7 @@
     display: flex; align-items: baseline; gap: 20px; flex-wrap: wrap;
   }
   header h1 { font-family: 'VT323', monospace; font-size: 2rem; letter-spacing: 0.08em; }
-  header .sub { font-size: 0.65rem; letter-spacing: 0.25em; color: var(--amber-dim); }
+  header .sub { font-size: 0.85rem; letter-spacing: 0.25em; color: var(--amber-dim); }
 
   main {
     display: grid;
@@ -70,7 +70,7 @@
   }
 
   .panel-title {
-    font-size: 0.65rem; letter-spacing: 0.3em; color: var(--amber);
+    font-size: 0.85rem; letter-spacing: 0.3em; color: var(--amber);
     border-bottom: 1px solid var(--amber-dim);
     padding-bottom: 6px;
   }
@@ -79,18 +79,18 @@
   .tab {
     flex: 1; padding: 6px 4px; border: 1px solid var(--amber-dim);
     background: transparent; color: var(--amber-dim); cursor: pointer;
-    font-family: inherit; font-size: 0.65rem; letter-spacing: 0.15em;
+    font-family: inherit; font-size: 0.85rem; letter-spacing: 0.15em;
     transition: all 0.1s;
   }
   .tab.active { border-color: var(--amber); color: var(--amber); background: var(--amber-faint); }
   .tab:hover:not(.active) { border-color: var(--amber); color: var(--amber); }
 
-  label { display: block; font-size: 0.6rem; letter-spacing: 0.2em; color: var(--amber); margin-bottom: 4px; }
+  label { display: block; font-size: 0.8rem; letter-spacing: 0.2em; color: var(--amber); margin-bottom: 4px; }
 
   input[type=text], select, textarea {
     width: 100%; padding: 7px 10px;
     background: #0d0d00; border: 1px solid var(--amber-dim);
-    color: var(--amber); font-family: inherit; font-size: 0.75rem;
+    color: var(--amber); font-family: inherit; font-size: 0.95rem;
     outline: none; resize: vertical;
   }
   input[type=text]:focus, select:focus, textarea:focus { border-color: var(--amber); }
@@ -100,24 +100,24 @@
   .len-btn {
     flex: 1; padding: 6px 2px; border: 1px solid var(--amber-dim);
     background: transparent; color: var(--amber-dim); cursor: pointer;
-    font-family: inherit; font-size: 0.6rem; letter-spacing: 0.15em;
+    font-family: inherit; font-size: 0.8rem; letter-spacing: 0.15em;
     transition: all 0.1s;
   }
   .len-btn.active { border-color: var(--amber); color: var(--amber); background: var(--amber-faint); }
   .len-btn:hover:not(.active) { border-color: var(--amber); color: var(--amber); }
 
-  #playlist-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.65rem; color: var(--amber); }
+  #playlist-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--amber); }
   #playlist-toggle input { width: auto; }
 
   .dropzone {
     border: 1px dashed var(--amber-dim); padding: 20px;
-    text-align: center; font-size: 0.65rem; letter-spacing: 0.2em;
+    text-align: center; font-size: 0.85rem; letter-spacing: 0.2em;
     color: var(--amber-dim); cursor: pointer; transition: all 0.2s;
   }
   .dropzone.dragover { border-color: var(--amber); color: var(--amber); background: var(--amber-faint); }
   .dropzone input[type=file] { display: none; }
 
-  #file-info { font-size: 0.65rem; color: var(--green); min-height: 1.2em; }
+  #file-info { font-size: 0.85rem; color: var(--green); min-height: 1.2em; }
 
   .submit-btn {
     width: 100%; padding: 10px; border: 1px solid var(--amber);
@@ -128,7 +128,7 @@
   .submit-btn:hover { background: var(--amber); color: var(--dark); }
   .submit-btn:disabled { opacity: 0.4; cursor: default; background: transparent; }
 
-  #submit-msg { font-size: 0.65rem; min-height: 1.2em; letter-spacing: 0.1em; }
+  #submit-msg { font-size: 0.85rem; min-height: 1.2em; letter-spacing: 0.1em; }
   #submit-msg.ok { color: var(--green); }
   #submit-msg.err { color: var(--red-bright); }
 
@@ -140,7 +140,7 @@
   }
 
   .section-title {
-    font-size: 0.6rem; letter-spacing: 0.3em; color: var(--amber);
+    font-size: 0.8rem; letter-spacing: 0.3em; color: var(--amber);
     border-bottom: 1px solid var(--amber-dim); padding-bottom: 4px;
     display: flex; justify-content: space-between;
   }
@@ -150,7 +150,7 @@
   .job-row {
     border: 1px solid var(--amber-faint); padding: 7px 10px;
     display: flex; flex-direction: column; gap: 3px;
-    font-size: 0.7rem; cursor: pointer;
+    font-size: 0.9rem; cursor: pointer;
   }
   .job-row:hover { border-color: var(--amber-dim); }
   .job-row.running { border-color: var(--green); }
@@ -160,7 +160,7 @@
   .job-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .job-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .job-badge {
-    font-size: 0.55rem; letter-spacing: 0.15em; padding: 1px 5px; border: 1px solid;
+    font-size: 0.75rem; letter-spacing: 0.15em; padding: 1px 5px; border: 1px solid;
     white-space: nowrap; flex-shrink: 0;
   }
   .badge-running { color: var(--green); border-color: var(--green); }
@@ -169,10 +169,10 @@
   .badge-failed { color: var(--red-bright); border-color: var(--red-bright); }
   .badge-cancelled { color: var(--amber-dim); border-color: var(--amber-faint); }
 
-  .job-meta { font-size: 0.58rem; color: var(--amber-dim); }
+  .job-meta { font-size: 0.78rem; color: var(--amber-dim); }
 
   .cancel-btn {
-    font-size: 0.55rem; padding: 1px 6px; border: 1px solid var(--amber-dim);
+    font-size: 0.75rem; padding: 1px 6px; border: 1px solid var(--amber-dim);
     background: transparent; color: var(--amber-dim); cursor: pointer; font-family: inherit;
   }
   .cancel-btn:hover { border-color: var(--red-bright); color: var(--red-bright); }
@@ -185,7 +185,7 @@
   .log-pane.open { display: block; }
   .log-pane pre { font-size: 0.6rem; color: var(--green-dim); white-space: pre-wrap; word-break: break-all; }
 
-  .empty-msg { font-size: 0.65rem; color: var(--amber-dim); letter-spacing: 0.15em; padding: 8px 0; }
+  .empty-msg { font-size: 0.85rem; color: var(--amber-dim); letter-spacing: 0.15em; padding: 8px 0; }
 
   @media (max-width: 800px) {
     main { grid-template-columns: 1fr; height: auto; }
