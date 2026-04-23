@@ -87,7 +87,7 @@ def resolve_youtube_rich_metadata(url):
     """
     result = subprocess.run(
         [YT_DLP, "--no-playlist", "--skip-download", "--dump-json", url],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True, text=True, timeout=60,
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip()[:300] or "yt-dlp failed")

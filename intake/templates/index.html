@@ -138,6 +138,8 @@
   }
   #ai-result .ai-title { color: var(--amber); font-size: 0.85rem; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #ai-result .ai-reasoning { font-style: italic; }
+  #ai-result.loading { display: block; border-color: var(--amber-dim); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
   /* ── Right panel: queue ── */
   .panel-queue {
@@ -331,7 +333,8 @@ async function analyzeUrl() {
   const resultEl = document.getElementById('ai-result');
   btn.disabled = true;
   btn.textContent = '⚡ ANALYZING...';
-  resultEl.style.display = 'none';
+  resultEl.className = 'loading';
+  resultEl.innerHTML = '<div>FETCHING METADATA + RUNNING AI CLASSIFICATION...</div>';
   msg('', '');
 
   try {
@@ -343,6 +346,8 @@ async function analyzeUrl() {
     if (!res.ok) {
       let errMsg = res.status;
       try { const d = await res.json(); errMsg = d.error || res.status; } catch {}
+      resultEl.className = '';
+      resultEl.style.display = 'none';
       msg('ANALYZE ERROR: ' + errMsg, 'err');
       return;
     }
@@ -364,6 +369,7 @@ async function analyzeUrl() {
       `<div class="ai-title">${escHtml(data.title || rawUrl)}</div>` +
       `<div>${escHtml(data.category.replace(/_/g,' ').toUpperCase())} · ${detectedLength.toUpperCase()}${dur}</div>` +
       `<div class="ai-reasoning">${escHtml(data.reasoning || '')}</div>`;
+    resultEl.className = '';
     resultEl.style.display = 'block';
 
   } catch (e) {
