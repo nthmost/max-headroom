@@ -294,6 +294,7 @@
 </main>
 
 <script>
+const BASE = '{{ base_path }}';
 const API_KEY = (() => {
   let k = localStorage.getItem('intake_api_key');
   if (!k) {
@@ -304,6 +305,7 @@ const API_KEY = (() => {
 })();
 
 const headers = () => ({ 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY });
+const url = path => BASE + path;
 
 let currentSource = 'youtube';
 let currentLength = 'auto';
@@ -369,7 +371,7 @@ async function submitJob() {
       };
     }
 
-    const res = await fetch('/api/submit', { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+    const res = await fetch(url('/api/submit'), { method: 'POST', headers: headers(), body: JSON.stringify(body) });
     const data = await res.json();
     if (!res.ok) { msg('ERROR: ' + (data.error || res.status), 'err'); return; }
 
@@ -417,7 +419,7 @@ function loadFile(file) {
 
 async function cancelJob(id, e) {
   e.stopPropagation();
-  await fetch(`/api/job/${id}/cancel`, { method: 'POST', headers: headers() });
+  await fetch(url(`/api/job/${id}/cancel`), { method: 'POST', headers: headers() });
   refreshQueue();
 }
 
@@ -440,7 +442,7 @@ async function fetchLog(id) {
   const pane = document.getElementById(`log-${id}`);
   if (!pane) return;
   try {
-    const res = await fetch(`/api/job/${id}/log?tail=40`, { headers: headers() });
+    const res = await fetch(url(`/api/job/${id}/log?tail=40`), { headers: headers() });
     const data = await res.json();
     const pre = pane.querySelector('pre');
     if (pre) pre.textContent = data.lines.join('\n');
@@ -487,8 +489,8 @@ function escHtml(s) {
 async function refreshQueue() {
   try {
     const [qRes, rRes] = await Promise.all([
-      fetch('/api/queue', { headers: headers() }),
-      fetch('/api/recent', { headers: headers() }),
+      fetch(url('/api/queue'), { headers: headers() }),
+      fetch(url('/api/recent'), { headers: headers() }),
     ]);
     const queue = await qRes.json();
     const recent = await rRes.json();

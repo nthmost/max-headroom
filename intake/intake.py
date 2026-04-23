@@ -11,12 +11,19 @@ import threading
 import time
 
 from flask import Flask, request, jsonify, render_template, abort
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
 import downloader
 from config import API_KEY, CATEGORIES, LENGTHS, PORT, classify_length
 
+# BASE_PATH allows the app to run behind a reverse proxy at a sub-path.
+# Set via env var: BASE_PATH=/media
+# Must NOT have a trailing slash.
+BASE_PATH = os.environ.get("BASE_PATH", "").rstrip("/")
+
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
 # ─── Auth ───────────────────────────────────────────────────────────────────
@@ -49,7 +56,7 @@ def worker_loop():
 
 @app.route("/")
 def index():
-    return render_template("index.html", categories=CATEGORIES, lengths=LENGTHS)
+    return render_template("index.html", categories=CATEGORIES, lengths=LENGTHS, base_path=BASE_PATH)
 
 
 @app.route("/api/categories")
