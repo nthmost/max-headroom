@@ -8,7 +8,13 @@ import re
 import subprocess
 import shutil
 import db
-from config import INCOMING_DIR, LOG_DIR, YT_DLP, YT_COOKIES, classify_length
+from config import (
+    INCOMING_DIR, LOG_DIR,
+    YT_DLP, YT_COOKIES,
+    LOKI_HOST, LOKI_YT_DLP, LOKI_COOKIES,
+    ZIKZAK_USER, ZIKZAK_HOST, ZIKZAK_JUMP, ZIKZAK_MEDIA,
+    classify_length,
+)
 
 
 def _log_path(job_id):
@@ -177,17 +183,18 @@ def parse_ia_identifier(url_or_id):
 def run_job(job):
     """
     Execute a download job. Blocks until complete.
-    Updates DB with pid, then marks done/failed.
+    YouTube jobs run on loki and rsync directly to zikzak.
+    IA jobs run locally.
     """
     job_id = job["id"]
     log_path = _log_path(job_id)
-    dest_dir = os.path.join(INCOMING_DIR, job["category"], job["length"])
-    os.makedirs(dest_dir, exist_ok=True)
 
     if job["source"] == "ia":
+        dest_dir = os.path.join(INCOMING_DIR, job["category"], job["length"])
+        os.makedirs(dest_dir, exist_ok=True)
         cmd = _build_ia_cmd(job["url"], dest_dir)
     else:
-        cmd = _build_yt_cmd(job["url"], dest_dir)
+        cmd = _build_loki_yt_cmd(job["url"], job["category"], job["length"], job_id)
 
     with open(log_path, "w") as logfh:
         logfh.write(f"# Job {job_id}: {job['url']}\n")
@@ -203,7 +210,6 @@ def run_job(job):
     if returncode == 0:
         db.mark_done(job_id)
     else:
-        # Grab last non-empty line from log as error summary
         error_msg = ""
         try:
             with open(log_path) as f:
@@ -214,16 +220,27 @@ def run_job(job):
         db.mark_failed(job_id, error_msg)
 
 
-def _build_yt_cmd(url, dest_dir):
-    output_template = os.path.join(dest_dir, "%(title)s.%(ext)s")
-    return [
-        YT_DLP,
-        "-f", "bestvideo+bestaudio/best",
-        "--no-playlist",
-        *_yt_cookies_args(),
-        "-o", output_template,
-        url,
-    ]
+def _build_loki_yt_cmd(url, category, length, job_id):
+    """
+    SSH to loki, download via yt-dlp to a staging dir,
+    rsync directly to zikzak:/mnt/media/CATEGORY/LENGTH/, then clean up.
+    """
+    staging = f"/tmp/intake_{job_id}"
+    dest = f"{ZIKZAK_MEDIA}/{category}/{length}"
+    ssh_to_zikzak = f"ssh -o StrictHostKeyChecking=no -J {ZIKZAK_JUMP}"
+    script = (
+        f"set -e && "
+        f"mkdir -p {staging} && "
+        f"{LOKI_YT_DLP} -f bestvideo+bestaudio/best --no-playlist "
+        f"--cookies {LOKI_COOKIES} "
+        f"-o '{staging}/%(title)s.%(ext)s' '{url}' && "
+        f"ssh -o StrictHostKeyChecking=no -J {ZIKZAK_JUMP} "
+        f"{ZIKZAK_USER}@{ZIKZAK_HOST} 'mkdir -p {dest}' && "
+        f"rsync -av -e '{ssh_to_zikzak}' "
+        f"{staging}/ {ZIKZAK_USER}@{ZIKZAK_HOST}:{dest}/ && "
+        f"rm -rf {staging}"
+    )
+    return ["ssh", "-o", "StrictHostKeyChecking=no", LOKI_HOST, script]
 
 
 def _build_ia_cmd(identifier, dest_dir):
