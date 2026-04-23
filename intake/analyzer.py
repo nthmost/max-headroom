@@ -16,6 +16,8 @@ You are a media classifier for a retro-cyberpunk broadcast network.
 Given the metadata below, choose the single best category from this list:
 {categories}
 
+If none of the existing categories fits well, suggest a new one using snake_case.
+
 Also determine the length bucket based on duration_seconds:
 - short: under 5 minutes (< 300s)
 - medium: 5-30 minutes (300-1799s)
@@ -23,7 +25,9 @@ Also determine the length bucket based on duration_seconds:
 - unknown: if duration is missing or 0
 
 Respond with ONLY a JSON object on one line:
-{{"category": "<category>", "length": "<short|medium|long|unknown>", "reasoning": "<one sentence>"}}
+{{"category": "<category>", "is_new_category": <true|false>, "length": "<short|medium|long|unknown>", "reasoning": "<one sentence>"}}
+
+Set is_new_category to true only if you invented a category not in the list above.
 
 Title: {title}
 Duration: {duration}s
@@ -70,8 +74,14 @@ def classify(metadata: dict) -> dict:
         text = message.content[0].text.strip()
         result = json.loads(text)
 
-        if result.get("category") not in CATEGORIES:
-            result["category"] = CATEGORIES[0]
+        cat = result.get("category", "")
+        is_new = result.get("is_new_category", False) or (cat not in CATEGORIES)
+        # Sanitise new category name to snake_case
+        if is_new and cat:
+            import re
+            cat = re.sub(r"[^a-z0-9]+", "_", cat.lower()).strip("_")
+        result["category"] = cat if cat else CATEGORIES[0]
+        result["is_new_category"] = is_new and cat not in CATEGORIES
         if result.get("length") not in ("short", "medium", "long"):
             result["length"] = classify_length(duration)
 
@@ -80,6 +90,7 @@ def classify(metadata: dict) -> dict:
     except Exception as exc:
         return {
             "category": CATEGORIES[0],
+            "is_new_category": False,
             "length": classify_length(duration),
             "reasoning": f"AI classification failed: {exc}",
         }

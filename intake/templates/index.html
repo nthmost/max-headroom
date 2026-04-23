@@ -158,6 +158,22 @@
   #modal-ai-status.classifying { animation: pulse 1.2s ease-in-out infinite; }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
   #modal-reasoning { font-size: 0.78rem; color: var(--amber-dim); font-style: italic; display: none; }
+  #modal-new-category {
+    display: none; padding: 8px 10px; border: 1px solid var(--amber);
+    background: var(--amber-faint); font-size: 0.85rem;
+  }
+  #modal-new-category .new-cat-name { color: var(--amber); letter-spacing: 0.1em; }
+  #modal-new-category .new-cat-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .new-cat-accept {
+    padding: 4px 12px; border: 1px solid var(--amber); background: transparent;
+    color: var(--amber); cursor: pointer; font-family: inherit; font-size: 0.8rem; letter-spacing: 0.15em;
+  }
+  .new-cat-accept:hover { background: var(--amber); color: var(--dark); }
+  .new-cat-reject {
+    padding: 4px 12px; border: 1px solid var(--amber-dim); background: transparent;
+    color: var(--amber-dim); cursor: pointer; font-family: inherit; font-size: 0.8rem; letter-spacing: 0.15em;
+  }
+  .new-cat-reject:hover { border-color: var(--amber); color: var(--amber); }
   .modal-actions { display: flex; gap: 8px; margin-top: 4px; }
   .modal-queue-btn {
     flex: 2; padding: 10px; border: 1px solid var(--amber);
@@ -345,6 +361,13 @@
         <button class="len-btn" onclick="setModalLength('long')">LONG &gt;30m</button>
       </div>
     </div>
+    <div id="modal-new-category">
+      <div>⚡ AI SUGGESTS NEW CATEGORY: <span class="new-cat-name" id="modal-new-cat-name"></span></div>
+      <div class="new-cat-actions">
+        <button class="new-cat-accept" onclick="acceptNewCategory()">USE IT</button>
+        <button class="new-cat-reject" onclick="rejectNewCategory()">PICK EXISTING</button>
+      </div>
+    </div>
     <div id="modal-ai-status"></div>
     <div id="modal-reasoning"></div>
     <div class="modal-actions">
@@ -413,18 +436,60 @@ function openModal(title, durationSeconds, length) {
   status.textContent = '⚡ AI CLASSIFYING...';
   status.className = 'classifying';
   document.getElementById('modal-reasoning').style.display = 'none';
+  document.getElementById('modal-new-category').style.display = 'none';
+  _pendingNewCategory = '';
   document.getElementById('modal-overlay').classList.add('open');
 }
 
-function fillModalAI(category, length, reasoning, durationSeconds) {
-  if (category) document.getElementById('modal-category').value = category;
+let _pendingNewCategory = '';
+
+function fillModalAI(category, isNew, length, reasoning, durationSeconds) {
   if (length && length !== 'unknown') setModalLength(length);
   if (durationSeconds) document.getElementById('modal-meta').textContent = formatDuration(durationSeconds);
+
   const status = document.getElementById('modal-ai-status');
-  status.textContent = '✓ AI CLASSIFIED';
-  status.className = '';
+  const newCatEl = document.getElementById('modal-new-category');
+
+  if (isNew && category) {
+    _pendingNewCategory = category;
+    document.getElementById('modal-new-cat-name').textContent = category.replace(/_/g, ' ').toUpperCase();
+    newCatEl.style.display = 'block';
+    status.textContent = '';
+  } else {
+    newCatEl.style.display = 'none';
+    if (category) document.getElementById('modal-category').value = category;
+    status.textContent = '✓ AI CLASSIFIED';
+    status.className = '';
+  }
+
   const r = document.getElementById('modal-reasoning');
   if (reasoning) { r.textContent = reasoning; r.style.display = 'block'; }
+}
+
+function acceptNewCategory() {
+  const cat = _pendingNewCategory;
+  if (!cat) return;
+  const sel = document.getElementById('modal-category');
+  if (!sel.querySelector(`option[value="${cat}"]`)) {
+    const opt = document.createElement('option');
+    opt.value = cat;
+    opt.textContent = cat.replace(/_/g, ' ').toUpperCase();
+    sel.appendChild(opt);
+  }
+  sel.value = cat;
+  document.getElementById('modal-new-category').style.display = 'none';
+  const status = document.getElementById('modal-ai-status');
+  status.textContent = '✓ NEW CATEGORY ACCEPTED';
+  status.className = '';
+}
+
+function rejectNewCategory() {
+  _pendingNewCategory = '';
+  document.getElementById('modal-new-category').style.display = 'none';
+  const status = document.getElementById('modal-ai-status');
+  status.textContent = 'SELECT A CATEGORY BELOW';
+  status.className = '';
+  document.getElementById('modal-category').focus();
 }
 
 function closeModal() {
@@ -494,7 +559,7 @@ async function analyzeUrl() {
         return;
       }
       const len = (data.length && data.length !== 'unknown') ? data.length : modalLength;
-      fillModalAI(data.category, len, data.reasoning, data.duration_seconds);
+      fillModalAI(data.category, data.is_new_category, len, data.reasoning, data.duration_seconds);
     }).catch(() => {
       const s = document.getElementById('modal-ai-status');
       if (s) { s.textContent = 'AI unavailable'; s.className = ''; }

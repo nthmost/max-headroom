@@ -105,6 +105,7 @@ def api_analyze():
             title=metadata["title"],
             duration_seconds=metadata.get("duration_seconds"),
             category=result["category"],
+            is_new_category=result.get("is_new_category", False),
             length=result["length"],
             reasoning=result["reasoning"],
         )
