@@ -10,13 +10,13 @@ import re
 import threading
 import time
 
-from flask import Flask, request, jsonify, render_template, abort
+from flask import Flask, request, jsonify, render_template
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
 import downloader
 import analyzer
-from config import API_KEY, CATEGORIES, LENGTHS, PORT, classify_length
+from config import CATEGORIES, LENGTHS, PORT, classify_length
 
 # BASE_PATH allows the app to run behind a reverse proxy at a sub-path.
 # Set via env var: BASE_PATH=/media
@@ -25,16 +25,6 @@ BASE_PATH = os.environ.get("BASE_PATH", "").rstrip("/")
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
-
-
-# ─── Auth ───────────────────────────────────────────────────────────────────
-
-def check_auth():
-    key = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if not key:
-        key = request.args.get("key", "")
-    if key != API_KEY:
-        abort(401)
 
 
 # ─── Worker thread ──────────────────────────────────────────────────────────
@@ -62,13 +52,11 @@ def index():
 
 @app.route("/api/categories")
 def api_categories():
-    check_auth()
     return jsonify(CATEGORIES)
 
 
 @app.route("/api/analyze", methods=["POST"])
 def api_analyze():
-    check_auth()
     data = request.get_json(force=True)
     source = data.get("source")
     raw_url = data.get("url", "").strip()
@@ -101,7 +89,6 @@ def api_analyze():
 
 @app.route("/api/submit", methods=["POST"])
 def api_submit():
-    check_auth()
     data = request.get_json(force=True)
 
     source = data.get("source")          # 'youtube', 'ia', 'playlist_file'
@@ -177,19 +164,16 @@ def api_submit():
 
 @app.route("/api/queue")
 def api_queue():
-    check_auth()
     return jsonify(db.get_queue())
 
 
 @app.route("/api/recent")
 def api_recent():
-    check_auth()
     return jsonify(db.get_recent())
 
 
 @app.route("/api/job/<int:job_id>/log")
 def api_job_log(job_id):
-    check_auth()
     job = db.get_job(job_id)
     if not job:
         abort(404)
@@ -204,7 +188,6 @@ def api_job_log(job_id):
 
 @app.route("/api/job/<int:job_id>/cancel", methods=["POST"])
 def api_job_cancel(job_id):
-    check_auth()
     job = db.get_job(job_id)
     if not job:
         abort(404)

@@ -291,16 +291,7 @@
 
 <script>
 const BASE = '{{ base_path }}';
-const API_KEY = (() => {
-  let k = localStorage.getItem('intake_api_key');
-  if (!k) {
-    k = prompt('INTAKE API KEY:');
-    if (k) localStorage.setItem('intake_api_key', k);
-  }
-  return k || '';
-})();
-
-const headers = () => ({ 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY });
+const headers = () => ({ 'Content-Type': 'application/json' });
 const url = path => BASE + path;
 
 let currentSource = 'youtube';
