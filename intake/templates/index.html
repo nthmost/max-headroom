@@ -385,6 +385,7 @@
     </div>
     <div id="modal-ai-status"></div>
     <div id="modal-reasoning"></div>
+    <div id="modal-error" style="display:none;font-size:0.8rem;color:var(--red-bright);letter-spacing:0.1em"></div>
     <div class="modal-actions">
       <button class="modal-queue-btn" id="modal-queue-btn" onclick="queueFromModal()">▶ QUEUE IT</button>
       <button class="modal-cancel-btn" onclick="closeModal()">✕ CANCEL</button>
@@ -484,6 +485,7 @@ function openModal(title, durationSeconds, length) {
   document.getElementById('modal-reasoning').style.display = 'none';
   document.getElementById('modal-new-category').style.display = 'none';
   _pendingNewCategory = '';
+  document.getElementById('modal-error').style.display = 'none';
   document.getElementById('modal-overlay').classList.add('open');
 }
 
@@ -534,14 +536,22 @@ function closeModal() {
   document.getElementById('modal-overlay').classList.remove('open');
 }
 
+function modalError(text) {
+  const el = document.getElementById('modal-error');
+  el.textContent = text;
+  el.style.display = 'block';
+}
+
 async function queueFromModal() {
   const cat = document.getElementById('modal-category').value;
   if (cat === '__new__') {
     const inp = document.getElementById('modal-new-category-input');
     inp.style.display = 'block';
     inp.focus();
+    modalError('TYPE A CATEGORY NAME AND PRESS ENTER');
     return;
   }
+  document.getElementById('modal-error').style.display = 'none';
   const btn = document.getElementById('modal-queue-btn');
   btn.disabled = true;
   try {
@@ -554,13 +564,13 @@ async function queueFromModal() {
     };
     const res = await fetch(url('/api/submit'), { method: 'POST', headers: headers(), body: JSON.stringify(body) });
     const data = await res.json();
-    if (!res.ok) { msg('ERROR: ' + (data.error || res.status), 'err'); return; }
+    if (!res.ok) { modalError('ERROR: ' + (data.error || res.status)); return; }
     closeModal();
     document.getElementById('url-input').value = '';
     msg(`QUEUED ${data.queued} JOB${data.queued !== 1 ? 'S' : ''}`, 'ok');
     refreshQueue();
   } catch (e) {
-    msg('REQUEST FAILED: ' + e.message, 'err');
+    modalError('REQUEST FAILED: ' + e.message);
   } finally {
     btn.disabled = false;
   }

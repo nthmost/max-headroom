@@ -24,6 +24,7 @@ from config import CATEGORIES, LENGTHS, PORT, classify_length
 BASE_PATH = os.environ.get("BASE_PATH", "").rstrip("/")
 
 app = Flask(__name__)
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
