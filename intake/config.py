@@ -3,7 +3,7 @@ import os
 INCOMING_DIR = "/mnt/incoming"
 LOG_DIR = "/var/log/transcode/intake"
 DB_PATH = os.path.join(os.path.dirname(__file__), "intake.db")
-YT_DLP = os.path.expanduser("~/.local/bin/yt-dlp")
+YT_DLP = os.environ.get("YT_DLP", "/usr/local/bin/yt-dlp")
 PORT = 8765
 
 API_KEY = os.environ.get("INTAKE_API_KEY", "changeme")
