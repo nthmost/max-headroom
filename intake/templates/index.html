@@ -9,8 +9,8 @@
 <style>
   :root {
     --amber: #FFB000;
-    --amber-dim: #7a5200;
-    --amber-faint: #3a2000;
+    --amber-dim: #c07800;
+    --amber-faint: #5a3400;
     --green: #00FF88;
     --green-dim: #007a40;
     --red-bright: #FF2200;
@@ -70,8 +70,8 @@
   }
 
   .panel-title {
-    font-size: 0.65rem; letter-spacing: 0.3em; color: var(--amber-dim);
-    border-bottom: 1px solid var(--amber-faint);
+    font-size: 0.65rem; letter-spacing: 0.3em; color: var(--amber);
+    border-bottom: 1px solid var(--amber-dim);
     padding-bottom: 6px;
   }
 
@@ -85,7 +85,7 @@
   .tab.active { border-color: var(--amber); color: var(--amber); background: var(--amber-faint); }
   .tab:hover:not(.active) { border-color: var(--amber); color: var(--amber); }
 
-  label { display: block; font-size: 0.6rem; letter-spacing: 0.2em; color: var(--amber-dim); margin-bottom: 4px; }
+  label { display: block; font-size: 0.6rem; letter-spacing: 0.2em; color: var(--amber); margin-bottom: 4px; }
 
   input[type=text], select, textarea {
     width: 100%; padding: 7px 10px;
@@ -106,7 +106,7 @@
   .len-btn.active { border-color: var(--amber); color: var(--amber); background: var(--amber-faint); }
   .len-btn:hover:not(.active) { border-color: var(--amber); color: var(--amber); }
 
-  #playlist-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.65rem; color: var(--amber-dim); }
+  #playlist-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.65rem; color: var(--amber); }
   #playlist-toggle input { width: auto; }
 
   .dropzone {
@@ -140,8 +140,8 @@
   }
 
   .section-title {
-    font-size: 0.6rem; letter-spacing: 0.3em; color: var(--amber-dim);
-    border-bottom: 1px solid var(--amber-faint); padding-bottom: 4px;
+    font-size: 0.6rem; letter-spacing: 0.3em; color: var(--amber);
+    border-bottom: 1px solid var(--amber-dim); padding-bottom: 4px;
     display: flex; justify-content: space-between;
   }
 
@@ -185,7 +185,7 @@
   .log-pane.open { display: block; }
   .log-pane pre { font-size: 0.6rem; color: var(--green-dim); white-space: pre-wrap; word-break: break-all; }
 
-  .empty-msg { font-size: 0.65rem; color: var(--amber-faint); letter-spacing: 0.15em; padding: 8px 0; }
+  .empty-msg { font-size: 0.65rem; color: var(--amber-dim); letter-spacing: 0.15em; padding: 8px 0; }
 
   @media (max-width: 800px) {
     main { grid-template-columns: 1fr; height: auto; }
