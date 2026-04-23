@@ -8,7 +8,7 @@ import re
 import subprocess
 import shutil
 import db
-from config import INCOMING_DIR, LOG_DIR, YT_DLP, classify_length
+from config import INCOMING_DIR, LOG_DIR, YT_DLP, YT_COOKIES, classify_length
 
 
 def _log_path(job_id):
@@ -29,13 +29,19 @@ def resolve_youtube_oembed(url):
     return data.get("title", url), None
 
 
+def _yt_cookies_args():
+    if YT_COOKIES and os.path.exists(YT_COOKIES):
+        return ["--cookies", YT_COOKIES]
+    return []
+
+
 def resolve_youtube_metadata(url):
     """
     Return (title, duration_seconds) for a single YouTube URL.
     Raises subprocess.CalledProcessError on failure.
     """
     result = subprocess.run(
-        [YT_DLP, "--no-playlist", "--print", "%(title)s\t%(duration)s", url],
+        [YT_DLP, "--no-playlist", "--print", "%(title)s\t%(duration)s", *_yt_cookies_args(), url],
         capture_output=True, text=True, timeout=60,
     )
     line = result.stdout.strip().split("\n")[0]
@@ -53,7 +59,7 @@ def expand_youtube_playlist(url):
     Return list of (url, title, duration_seconds) for each video in a playlist.
     """
     result = subprocess.run(
-        [YT_DLP, "--flat-playlist", "--print", "%(webpage_url)s\t%(title)s\t%(duration)s", url],
+        [YT_DLP, "--flat-playlist", "--print", "%(webpage_url)s\t%(title)s\t%(duration)s", *_yt_cookies_args(), url],
         capture_output=True, text=True, timeout=60,
     )
     entries = []
@@ -99,7 +105,7 @@ def resolve_youtube_rich_metadata(url):
     Raises RuntimeError on failure.
     """
     result = subprocess.run(
-        [YT_DLP, "--no-playlist", "--skip-download", "--dump-json", url],
+        [YT_DLP, "--no-playlist", "--skip-download", "--dump-json", *_yt_cookies_args(), url],
         capture_output=True, text=True, timeout=60,
     )
     if result.returncode != 0:
@@ -214,6 +220,7 @@ def _build_yt_cmd(url, dest_dir):
         YT_DLP,
         "-f", "bestvideo+bestaudio/best",
         "--no-playlist",
+        *_yt_cookies_args(),
         "-o", output_template,
         url,
     ]
