@@ -1,6 +1,6 @@
 #!/bin/bash
-# deploy.sh — Install the intake web app on headroom.local
-# Run this as a user with sudo access on headroom.local.
+# deploy.sh — Install the intake web app on loki.local
+# Run this as a user with sudo access on loki.local.
 # The app runs as the 'max' user on port 8765.
 
 set -euo pipefail
@@ -34,4 +34,4 @@ echo "    sudo systemctl daemon-reload"
 echo "    sudo systemctl enable --now intake"
 echo "    sudo systemctl status intake"
 echo ""
-echo "App will be available at: http://headroom.local:8765/"
+echo "App will be available at: http://loki.local:8765/"

@@ -203,6 +203,19 @@
   }
   .modal-cancel-btn:hover { border-color: var(--red-bright); color: var(--red-bright); }
 
+  .square-badge {
+    display: inline-block; font-size: 0.75rem; letter-spacing: 0.15em;
+    border: 1px solid var(--green-dim); color: var(--green);
+    padding: 2px 7px; background: #001a0d;
+  }
+  .crop-row {
+    display: none; margin-top: 6px; align-items: center; gap: 8px;
+    font-size: 0.8rem; letter-spacing: 0.12em; color: var(--amber);
+  }
+  .crop-row.visible { display: flex; }
+  .crop-row input[type=checkbox] { width: auto; accent-color: var(--amber); cursor: pointer; }
+  .crop-row label { margin: 0; cursor: pointer; }
+
   /* ── Right panel: queue ── */
   .panel-queue {
     padding: 20px 24px;
@@ -255,6 +268,13 @@
   }
   .cancel-btn:hover { border-color: var(--red-bright); color: var(--red-bright); }
 
+  .purge-btn {
+    font-size: 0.75rem; padding: 1px 6px; border: 1px solid #550000;
+    background: transparent; color: #aa2200; cursor: pointer; font-family: inherit;
+  }
+  .purge-btn:hover { border-color: var(--red-bright); color: var(--red-bright); background: #1a0000; }
+  .purge-btn:disabled { opacity: 0.4; cursor: default; }
+
   .log-pane {
     display: none; background: #000; border: 1px solid var(--amber-faint);
     padding: 8px; margin-top: 4px;
@@ -269,6 +289,150 @@
     main { grid-template-columns: 1fr; height: auto; }
     .panel-submit { border-right: none; border-bottom: 1px solid var(--amber-dim); }
   }
+
+  /* ── Nav toggle ── */
+  .nav-btn {
+    padding: 4px 14px; border: 1px solid var(--amber-dim);
+    background: transparent; color: var(--amber-dim); cursor: pointer;
+    font-family: inherit; font-size: 0.8rem; letter-spacing: 0.2em;
+    transition: all 0.1s; margin-left: auto;
+  }
+  .nav-btn.active { border-color: var(--amber); color: var(--amber); background: var(--amber-faint); }
+  .nav-btn:hover:not(.active) { border-color: var(--amber); color: var(--amber); }
+
+  /* ── Media manager view ── */
+  #view-media {
+    display: none;
+    flex-direction: column;
+    height: calc(100vh - 60px);
+    overflow: hidden;
+  }
+  #view-media.active { display: flex; }
+
+  .mm-toolbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 12px 24px; border-bottom: 1px solid var(--amber-dim);
+    flex-shrink: 0;
+  }
+  .mm-toolbar select, .mm-toolbar input[type=text] {
+    padding: 5px 9px; background: #0d0d00; border: 1px solid var(--amber-dim);
+    color: var(--amber); font-family: inherit; font-size: 0.85rem; outline: none;
+  }
+  .mm-toolbar select:focus, .mm-toolbar input[type=text]:focus { border-color: var(--amber); }
+  .mm-search { flex: 1; min-width: 140px; }
+  .mm-count { font-size: 0.8rem; color: var(--amber-dim); letter-spacing: 0.15em; margin-left: auto; }
+
+  .mm-reload-btn {
+    padding: 5px 12px; border: 1px solid var(--amber-dim);
+    background: transparent; color: var(--amber-dim); cursor: pointer;
+    font-family: inherit; font-size: 0.8rem; letter-spacing: 0.15em;
+  }
+  .mm-reload-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .mm-reload-btn:disabled { opacity: 0.4; cursor: default; }
+
+  .mm-table-wrap { flex: 1; overflow-y: auto; }
+  table.mm-table {
+    width: 100%; border-collapse: collapse; font-size: 0.85rem;
+  }
+  table.mm-table thead th {
+    position: sticky; top: 0; background: var(--dark);
+    text-align: left; padding: 7px 12px; color: var(--amber-dim);
+    font-size: 0.72rem; letter-spacing: 0.25em; border-bottom: 1px solid var(--amber-dim);
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  table.mm-table thead th:hover { color: var(--amber); }
+  table.mm-table thead th.sort-asc::after  { content: ' ▲'; font-size: 0.65rem; }
+  table.mm-table thead th.sort-desc::after { content: ' ▼'; font-size: 0.65rem; }
+  table.mm-table tbody tr {
+    border-bottom: 1px solid var(--amber-faint); cursor: pointer; transition: background 0.08s;
+  }
+  table.mm-table tbody tr:hover { background: var(--amber-faint); }
+  table.mm-table tbody td { padding: 6px 12px; color: var(--amber); }
+  table.mm-table tbody td.td-filename {
+    max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  table.mm-table tbody td.td-dim { color: var(--amber-dim); font-size: 0.8rem; }
+  .mm-len-badge {
+    font-size: 0.7rem; padding: 1px 5px; border: 1px solid var(--amber-dim);
+    color: var(--amber-dim); white-space: nowrap;
+  }
+  .mm-empty { padding: 24px; color: var(--amber-dim); letter-spacing: 0.2em; text-align: center; }
+
+  /* ── File detail modal ── */
+  #fm-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.88); z-index: 200;
+    justify-content: center; align-items: center;
+  }
+  #fm-overlay.open { display: flex; }
+  #fm-modal {
+    background: var(--dark); border: 1px solid var(--amber);
+    padding: 24px 28px; width: min(540px, 94vw);
+    display: flex; flex-direction: column; gap: 14px;
+    box-shadow: 0 0 60px rgba(255,176,0,0.12);
+  }
+  #fm-filename { font-size: 0.95rem; word-break: break-all; line-height: 1.4; }
+  .fm-meta-grid {
+    display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px;
+    font-size: 0.8rem;
+  }
+  .fm-meta-grid .k { color: var(--amber-dim); letter-spacing: 0.15em; }
+  .fm-meta-grid .v { color: var(--amber); }
+  #fm-probe-status { font-size: 0.75rem; color: var(--amber-dim); letter-spacing: 0.1em; }
+
+  .fm-section-title {
+    font-size: 0.72rem; letter-spacing: 0.3em; color: var(--amber-dim);
+    border-bottom: 1px solid var(--amber-faint); padding-bottom: 4px; margin-top: 4px;
+  }
+  .fm-move-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .fm-move-row select {
+    padding: 5px 8px; background: #0d0d00; border: 1px solid var(--amber-dim);
+    color: var(--amber); font-family: inherit; font-size: 0.85rem; outline: none; flex: 1;
+  }
+  .fm-len-group { display: flex; gap: 3px; }
+
+  .fm-actions { display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+  .fm-move-btn {
+    flex: 2; padding: 8px; border: 1px solid var(--amber);
+    background: var(--amber-faint); color: var(--amber); cursor: pointer;
+    font-family: 'VT323', monospace; font-size: 1.2rem; letter-spacing: 0.2em;
+  }
+  .fm-move-btn:hover { background: var(--amber); color: var(--dark); }
+  .fm-move-btn:disabled { opacity: 0.4; cursor: default; background: transparent; }
+  .fm-close-btn {
+    flex: 1; padding: 8px; border: 1px solid var(--amber-dim);
+    background: transparent; color: var(--amber-dim); cursor: pointer;
+    font-family: inherit; font-size: 0.85rem; letter-spacing: 0.15em;
+  }
+  .fm-close-btn:hover { border-color: var(--amber); color: var(--amber); }
+
+  /* Delete confirm inline */
+  #fm-delete-zone { display: flex; flex-direction: column; gap: 8px; }
+  .fm-delete-arm {
+    padding: 7px 14px; border: 1px solid #550000;
+    background: transparent; color: #aa2200; cursor: pointer;
+    font-family: inherit; font-size: 0.8rem; letter-spacing: 0.15em;
+  }
+  .fm-delete-arm:hover { border-color: var(--red-bright); color: var(--red-bright); background: #1a0000; }
+  #fm-delete-confirm {
+    display: none; padding: 10px; background: #1a0000; border: 1px solid var(--red-bright);
+    font-size: 0.8rem; letter-spacing: 0.08em;
+  }
+  .fm-confirm-btns { display: flex; gap: 8px; margin-top: 8px; }
+  .fm-confirm-yes {
+    flex: 1; padding: 6px; border: 1px solid var(--red-bright);
+    background: transparent; color: var(--red-bright); cursor: pointer;
+    font-family: 'VT323', monospace; font-size: 1.1rem; letter-spacing: 0.2em;
+  }
+  .fm-confirm-yes:hover { background: var(--red-bright); color: var(--dark); }
+  .fm-confirm-yes:disabled { opacity: 0.4; cursor: default; }
+  .fm-confirm-no {
+    padding: 6px 14px; border: 1px solid var(--amber-dim);
+    background: transparent; color: var(--amber-dim); cursor: pointer;
+    font-family: inherit; font-size: 0.8rem; letter-spacing: 0.15em;
+  }
+  .fm-confirm-no:hover { border-color: var(--amber); color: var(--amber); }
+  #fm-error { display:none; font-size:0.8rem; color:var(--red-bright); letter-spacing:0.1em; }
 </style>
 </head>
 <body>
@@ -278,9 +442,11 @@
 <header>
   <h1>MHBN</h1>
   <span class="sub">// INTAKE STATION //</span>
+  <button class="nav-btn" id="nav-intake" onclick="switchView('intake')">INTAKE</button>
+  <button class="nav-btn" id="nav-media"  onclick="switchView('media')">MEDIA MGR</button>
 </header>
 
-<main>
+<main id="view-intake">
 
   <!-- ── Submit panel ── -->
   <div class="panel-submit">
@@ -344,6 +510,12 @@
       </div>
     </div>
 
+    <!-- Crop option (manual override; auto-set by ⚡ ANALYZE) -->
+    <div id="main-crop-row" class="crop-row visible" style="display:flex">
+      <input type="checkbox" id="main-crop-sides">
+      <label for="main-crop-sides">CROP SIDES — fill frame, trim top/bottom</label>
+    </div>
+
     <button class="submit-btn" onclick="submitJob()">▶ QUEUE IT</button>
     <div id="submit-msg"></div>
 
@@ -372,11 +544,104 @@
   </div>
 </main>
 
+<!-- ── Media Manager view ── -->
+<div id="view-media">
+
+  <div class="mm-toolbar">
+    <label style="font-size:0.8rem;letter-spacing:0.2em;color:var(--amber-dim);margin:0">CAT</label>
+    <select id="mm-cat-filter" onchange="loadMedia()">
+      <option value="">ALL</option>
+      {% for cat in categories %}
+      <option value="{{ cat }}">{{ cat.replace('_',' ').upper() }}</option>
+      {% endfor %}
+    </select>
+    <label style="font-size:0.8rem;letter-spacing:0.2em;color:var(--amber-dim);margin:0">LEN</label>
+    <select id="mm-len-filter" onchange="loadMedia()">
+      <option value="">ALL</option>
+      <option value="short">SHORT</option>
+      <option value="medium">MEDIUM</option>
+      <option value="long">LONG</option>
+    </select>
+    <input class="mm-search" type="text" id="mm-search" placeholder="search filename..."
+           oninput="renderMediaTable()" autocomplete="off">
+    <button class="mm-reload-btn" id="mm-reload-btn" onclick="loadMedia()">↻ RELOAD</button>
+    <span class="mm-count" id="mm-count"></span>
+  </div>
+
+  <div class="mm-table-wrap">
+    <div id="mm-status" class="mm-empty">SELECT FILTERS OR CLICK RELOAD TO LOAD MEDIA</div>
+    <table class="mm-table" id="mm-table" style="display:none">
+      <thead>
+        <tr>
+          <th onclick="mmSort('filename')">FILENAME</th>
+          <th onclick="mmSort('category')">CATEGORY</th>
+          <th onclick="mmSort('length')">LEN</th>
+          <th onclick="mmSort('size')">SIZE</th>
+          <th onclick="mmSort('mtime')">DATE</th>
+        </tr>
+      </thead>
+      <tbody id="mm-tbody"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ── File detail / action modal ── -->
+<div id="fm-overlay" onclick="if(event.target===this)closeFm()">
+  <div id="fm-modal">
+    <div class="modal-header">// FILE DETAILS //</div>
+    <div id="fm-filename"></div>
+    <div class="fm-meta-grid" id="fm-meta-grid"></div>
+    <div id="fm-probe-status"></div>
+
+    <div class="fm-section-title">MOVE TO</div>
+    <div class="fm-move-row">
+      <select id="fm-to-cat">
+        {% for cat in categories %}
+        <option value="{{ cat }}">{{ cat.replace('_',' ').upper() }}</option>
+        {% endfor %}
+      </select>
+      <div class="fm-len-group">
+        <button class="len-btn" onclick="fmSetLen('short')">SHORT</button>
+        <button class="len-btn" onclick="fmSetLen('medium')">MEDIUM</button>
+        <button class="len-btn" onclick="fmSetLen('long')">LONG</button>
+      </div>
+    </div>
+
+    <div class="fm-actions">
+      <button class="fm-move-btn" id="fm-move-btn" onclick="doMoveFile()">→ MOVE</button>
+      <button class="fm-close-btn" onclick="closeFm()">✕ CLOSE</button>
+    </div>
+
+    <div class="fm-section-title">DELETE</div>
+    <div id="fm-delete-zone">
+      <button class="fm-delete-arm" onclick="armDelete()">✕ DELETE THIS FILE</button>
+      <div id="fm-delete-confirm">
+        DELETE <span id="fm-del-name" style="color:var(--red-bright)"></span>?
+        THIS CANNOT BE UNDONE.
+        <div class="fm-confirm-btns">
+          <button class="fm-confirm-yes" id="fm-confirm-yes-btn" onclick="doDeleteFile()">CONFIRM DELETE</button>
+          <button class="fm-confirm-no" onclick="disarmDelete()">NO</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="fm-error"></div>
+  </div>
+</div>
+
 <div id="modal-overlay" onclick="if(event.target===this)closeModal()">
   <div id="modal">
     <div class="modal-header">// CONFIRM QUEUE //</div>
     <div id="modal-video-title"></div>
-    <div id="modal-meta"></div>
+    <div id="modal-meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span id="modal-duration"></span>
+      <span id="modal-square-badge" class="square-badge" style="display:none">⊡ SQUARE</span>
+    </div>
+    <div id="modal-crop-row" class="crop-row">
+      <input type="checkbox" id="modal-crop-sides">
+      <label for="modal-crop-sides">CROP SIDES — fill frame, trim top/bottom</label>
+    </div>
     <div>
       <label>CATEGORY</label>
       <select id="modal-category" onchange="handleCategoryChange(this, 'modal-new-cat-row')">
@@ -533,7 +798,11 @@ function setModalLength(l) {
 
 function openModal(title, durationSeconds, length) {
   document.getElementById('modal-video-title').textContent = title || '(untitled)';
-  document.getElementById('modal-meta').textContent = durationSeconds ? formatDuration(durationSeconds) : 'duration: calculating...';
+  const dur = document.getElementById('modal-duration');
+  dur.textContent = durationSeconds ? formatDuration(durationSeconds) : 'duration: calculating...';
+  document.getElementById('modal-square-badge').style.display = 'none';
+  document.getElementById('modal-crop-row').classList.remove('visible');
+  document.getElementById('modal-crop-sides').checked = false;
   document.getElementById('modal-category').value = '{{ categories[0] }}';
   setModalLength(length || 'medium');
   const status = document.getElementById('modal-ai-status');
@@ -550,9 +819,14 @@ function openModal(title, durationSeconds, length) {
 
 let _pendingNewCategory = '';
 
-function fillModalAI(category, isNew, length, reasoning, durationSeconds) {
+function fillModalAI(category, isNew, length, reasoning, durationSeconds, isSquare) {
   if (length && length !== 'unknown') setModalLength(length);
-  if (durationSeconds) document.getElementById('modal-meta').textContent = formatDuration(durationSeconds);
+  if (durationSeconds) document.getElementById('modal-duration').textContent = formatDuration(durationSeconds);
+  if (isSquare) {
+    document.getElementById('modal-square-badge').style.display = '';
+    document.getElementById('modal-crop-row').classList.add('visible');
+    document.getElementById('modal-crop-sides').checked = true;
+  }
 
   const status = document.getElementById('modal-ai-status');
   const newCatEl = document.getElementById('modal-new-category');
@@ -617,6 +891,7 @@ async function queueFromModal() {
       urls: [modalUrl],
       category: cat,
       length: modalLength,
+      crop_sides: document.getElementById('modal-crop-sides').checked,
       playlist: false,
     };
     const res = await fetch(url('/api/submit'), { method: 'POST', headers: headers(), body: JSON.stringify(body) });
@@ -672,7 +947,7 @@ async function analyzeUrl() {
         return;
       }
       const len = (data.length && data.length !== 'unknown') ? data.length : modalLength;
-      fillModalAI(data.category, data.is_new_category, len, data.reasoning, data.duration_seconds);
+      fillModalAI(data.category, data.is_new_category, len, data.reasoning, data.duration_seconds, data.is_square);
     }).catch(() => {
       const s = document.getElementById('modal-ai-status');
       if (s) { s.textContent = 'AI unavailable'; s.className = ''; }
@@ -686,7 +961,7 @@ async function analyzeUrl() {
   }
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+// Escape key handled below with media modal support
 
 async function submitJob() {
   const btn = document.querySelector('.submit-btn');
@@ -696,12 +971,13 @@ async function submitJob() {
   try {
     let body;
 
+    const cropSides = document.getElementById('main-crop-sides').checked;
     if (currentSource === 'ia') {
       const rawUrl = document.getElementById('url-input').value.trim();
       if (!rawUrl) { msg('ENTER AN IDENTIFIER', 'err'); return; }
       const cat = document.getElementById('category').value;
       if (cat === '__new__') { msg('ENTER A CATEGORY NAME', 'err'); return; }
-      body = { source: 'ia', urls: [rawUrl], category: cat, length: currentLength };
+      body = { source: 'ia', urls: [rawUrl], category: cat, length: currentLength, crop_sides: cropSides };
     } else {
       const rawUrl = document.getElementById('url-input').value.trim();
       if (!rawUrl) { msg('ENTER A URL', 'err'); return; }
@@ -713,6 +989,7 @@ async function submitJob() {
         playlist: document.getElementById('is-playlist').checked,
         category: cat,
         length: currentLength,
+        crop_sides: cropSides,
       };
     }
 
@@ -735,6 +1012,32 @@ async function cancelJob(id, e) {
   e.stopPropagation();
   await fetch(url(`/api/job/${id}/cancel`), { method: 'POST', headers: headers() });
   refreshQueue();
+}
+
+async function purgeJob(id, e) {
+  e.stopPropagation();
+  if (!confirm('PURGE this job and delete all pipeline files on zikzak?\nThis cannot be undone.')) return;
+  const btn = document.getElementById(`purge-btn-${id}`);
+  if (btn) { btn.disabled = true; btn.textContent = '⌛ PURGING...'; }
+  try {
+    const res = await fetch(url(`/api/job/${id}/purge`), { method: 'POST', headers: headers() });
+    const data = await res.json();
+    if (!res.ok) {
+      alert('PURGE FAILED: ' + (data.error || res.status));
+      if (btn) { btn.disabled = false; btn.textContent = '✕ PURGE'; }
+      return;
+    }
+    const summary = [
+      data.deleted?.length  ? 'Deleted:\n  ' + data.deleted.join('\n  ')    : '',
+      data.not_found?.length? 'Not found:\n  ' + data.not_found.join('\n  ') : '',
+      data.errors?.length   ? 'Errors:\n  '   + data.errors.join('\n  ')     : '',
+    ].filter(Boolean).join('\n\n');
+    if (summary) alert(summary);
+    refreshQueue();
+  } catch (err) {
+    alert('PURGE REQUEST FAILED: ' + err.message);
+    if (btn) { btn.disabled = false; btn.textContent = '✕ PURGE'; }
+  }
 }
 
 function toggleLog(id) {
@@ -764,7 +1067,7 @@ async function fetchLog(id) {
   } catch {}
 }
 
-function jobRow(job, showCancel) {
+function jobRow(job, showCancel, showPurge) {
   const statusBadge = {
     running: '<span class="job-badge badge-running">▶ RUNNING</span>',
     pending: '<span class="job-badge badge-pending">⏳ PENDING</span>',
@@ -775,6 +1078,10 @@ function jobRow(job, showCancel) {
 
   const cancelBtn = showCancel
     ? `<button class="cancel-btn" onclick="cancelJob(${job.id}, event)">CANCEL</button>`
+    : '';
+
+  const purgeBtn = showPurge
+    ? `<button class="purge-btn" id="purge-btn-${job.id}" onclick="purgeJob(${job.id}, event)">✕ PURGE</button>`
     : '';
 
   const pipelineBadge = {
@@ -794,6 +1101,7 @@ function jobRow(job, showCancel) {
         ${statusBadge}
         ${pipelineBadge}
         ${cancelBtn}
+        ${purgeBtn}
       </div>
       <div class="job-meta">${escHtml(meta)}</div>
       ${error}
@@ -822,7 +1130,7 @@ async function refreshQueue() {
       ql.innerHTML = '<div class="empty-msg">NO JOBS QUEUED</div>';
       qc.textContent = '';
     } else {
-      ql.innerHTML = queue.map(j => jobRow(j, j.status === 'running' || j.status === 'pending')).join('');
+      ql.innerHTML = queue.map(j => jobRow(j, j.status === 'running' || j.status === 'pending', true)).join('');
       qc.textContent = `${queue.length}`;
     }
 
@@ -830,7 +1138,7 @@ async function refreshQueue() {
     if (recent.length === 0) {
       rl.innerHTML = '<div class="empty-msg">NO COMPLETED JOBS</div>';
     } else {
-      rl.innerHTML = recent.map(j => jobRow(j, false)).join('');
+      rl.innerHTML = recent.map(j => jobRow(j, false, true)).join('');
     }
 
     // Refresh open log panes
@@ -847,6 +1155,274 @@ async function refreshQueue() {
 // Poll every 3 seconds
 setInterval(refreshQueue, 3000);
 refreshQueue();
+
+// ── View switcher ────────────────────────────────────────────────────────────
+
+function switchView(v) {
+  document.getElementById('view-intake').style.display  = v === 'intake' ? '' : 'none';
+  document.getElementById('view-media').classList.toggle('active', v === 'media');
+  document.getElementById('nav-intake').classList.toggle('active', v === 'intake');
+  document.getElementById('nav-media').classList.toggle('active',  v === 'media');
+  if (v === 'media' && _mmFiles === null) loadMedia();
+}
+// Start with intake active
+document.getElementById('nav-intake').classList.add('active');
+
+// ── Media manager ─────────────────────────────────────────────────────────────
+
+let _mmFiles    = null;   // raw array from server
+let _mmSortKey  = 'mtime';
+let _mmSortAsc  = false;
+
+function fmtSize(b) {
+  if (b >= 1e9) return (b/1e9).toFixed(1) + ' GB';
+  if (b >= 1e6) return (b/1e6).toFixed(1) + ' MB';
+  if (b >= 1e3) return (b/1e3).toFixed(0) + ' KB';
+  return b + ' B';
+}
+function fmtAge(epoch) {
+  const d = Math.floor((Date.now()/1000 - epoch) / 86400);
+  if (d === 0) return 'today';
+  if (d === 1) return 'yesterday';
+  if (d < 30)  return d + 'd ago';
+  if (d < 365) return Math.floor(d/30) + 'mo ago';
+  return Math.floor(d/365) + 'y ago';
+}
+
+async function loadMedia() {
+  const btn = document.getElementById('mm-reload-btn');
+  btn.disabled = true; btn.textContent = '⌛ LOADING...';
+  document.getElementById('mm-status').textContent = 'LOADING...';
+  document.getElementById('mm-status').style.display = '';
+  document.getElementById('mm-table').style.display = 'none';
+  document.getElementById('mm-count').textContent = '';
+
+  const cat = document.getElementById('mm-cat-filter').value;
+  const len = document.getElementById('mm-len-filter').value;
+  const qs  = new URLSearchParams();
+  if (cat) qs.set('category', cat);
+  if (len) qs.set('length',   len);
+
+  try {
+    const res  = await fetch(url('/api/media?' + qs), { headers: headers() });
+    const data = await res.json();
+    if (!res.ok) {
+      document.getElementById('mm-status').textContent = 'ERROR: ' + (data.error || res.status);
+      return;
+    }
+    _mmFiles = data;
+    renderMediaTable();
+  } catch(e) {
+    document.getElementById('mm-status').textContent = 'REQUEST FAILED: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '↻ RELOAD';
+  }
+}
+
+function mmSort(key) {
+  if (_mmSortKey === key) { _mmSortAsc = !_mmSortAsc; }
+  else { _mmSortKey = key; _mmSortAsc = key === 'filename' || key === 'category'; }
+  renderMediaTable();
+}
+
+function renderMediaTable() {
+  if (!_mmFiles) return;
+  const q = document.getElementById('mm-search').value.trim().toLowerCase();
+  let rows = _mmFiles.filter(f =>
+    !q || f.filename.toLowerCase().includes(q) || f.category.toLowerCase().includes(q)
+  );
+
+  const key = _mmSortKey;
+  rows.sort((a, b) => {
+    const av = a[key], bv = b[key];
+    const cmp = typeof av === 'string' ? av.localeCompare(bv) : (av - bv);
+    return _mmSortAsc ? cmp : -cmp;
+  });
+
+  // Update sort indicators
+  document.querySelectorAll('table.mm-table thead th').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+  });
+  const cols = ['filename','category','length','size','mtime'];
+  const idx  = cols.indexOf(key);
+  if (idx >= 0) {
+    const ths = document.querySelectorAll('table.mm-table thead th');
+    ths[idx].classList.add(_mmSortAsc ? 'sort-asc' : 'sort-desc');
+  }
+
+  const tbody = document.getElementById('mm-tbody');
+  if (rows.length === 0) {
+    document.getElementById('mm-status').textContent = 'NO FILES FOUND';
+    document.getElementById('mm-status').style.display = '';
+    document.getElementById('mm-table').style.display = 'none';
+    document.getElementById('mm-count').textContent = '';
+    return;
+  }
+
+  tbody.innerHTML = rows.map((f, i) => `
+    <tr data-mmidx="${i}" onclick="openFmByIdx(this.dataset.mmidx)">
+      <td class="td-filename" title="${escHtml(f.filename)}">${escHtml(f.filename)}</td>
+      <td class="td-dim">${escHtml(f.category.replace(/_/g,' '))}</td>
+      <td><span class="mm-len-badge">${escHtml(f.length)}</span></td>
+      <td class="td-dim">${fmtSize(f.size)}</td>
+      <td class="td-dim">${fmtAge(f.mtime)}</td>
+    </tr>`).join('');
+
+  // Store rendered order so openFmByIdx can look up the right file
+  tbody._renderedRows = rows;
+
+  document.getElementById('mm-status').style.display = 'none';
+  document.getElementById('mm-table').style.display = '';
+  document.getElementById('mm-count').textContent = rows.length + ' FILE' + (rows.length !== 1 ? 'S' : '');
+}
+
+// ── File detail modal ─────────────────────────────────────────────────────────
+
+let _fmFile   = null;   // current file object
+let _fmToLen  = '';
+
+function fmSetLen(l) {
+  _fmToLen = l;
+  document.querySelectorAll('#fm-modal .fm-len-group .len-btn').forEach((b,i) => {
+    b.classList.toggle('active', ['short','medium','long'][i] === l);
+  });
+}
+
+function openFmByIdx(idx) {
+  const tbody = document.getElementById('mm-tbody');
+  openFm(tbody._renderedRows[parseInt(idx)]);
+}
+
+function openFm(f) {
+  _fmFile = f;
+
+  document.getElementById('fm-filename').textContent = f.filename;
+
+  const grid = document.getElementById('fm-meta-grid');
+  grid.innerHTML = `
+    <span class="k">CATEGORY</span><span class="v">${escHtml(f.category.replace(/_/g,' ').toUpperCase())}</span>
+    <span class="k">LENGTH</span>  <span class="v">${escHtml(f.length.toUpperCase())}</span>
+    <span class="k">SIZE</span>    <span class="v">${fmtSize(f.size)}</span>
+    <span class="k">MODIFIED</span><span class="v">${new Date(f.mtime*1000).toLocaleDateString()}</span>
+  `;
+
+  // Preset move-to selectors to current values
+  document.getElementById('fm-to-cat').value = f.category;
+  fmSetLen(f.length);
+
+  document.getElementById('fm-probe-status').textContent = '⌛ fetching media details...';
+  document.getElementById('fm-delete-confirm').style.display = 'none';
+  document.getElementById('fm-error').style.display = 'none';
+  document.getElementById('fm-move-btn').disabled = false;
+  document.getElementById('fm-overlay').classList.add('open');
+
+  // Async probe
+  fetch(url('/api/media/probe'), {
+    method: 'POST', headers: headers(),
+    body: JSON.stringify({ category: f.category, length: f.length, filename: f.filename }),
+  }).then(r => r.json()).then(data => {
+    const s = document.getElementById('fm-probe-status');
+    if (!data || (!data.streams && !data.format)) { s.textContent = ''; return; }
+    const vid = (data.streams || []).find(s => s.width);
+    const fmt = data.format || {};
+    const dur = parseFloat(vid?.duration || fmt.duration || 0);
+    const parts = [];
+    if (vid?.width)      parts.push(vid.width + '×' + vid.height);
+    if (vid?.codec_name) parts.push(vid.codec_name.toUpperCase());
+    if (dur > 0) {
+      const m = Math.floor(dur/60), sec = Math.floor(dur%60);
+      parts.push(m + 'm' + String(sec).padStart(2,'0') + 's');
+    }
+    if (fmt.bit_rate)    parts.push(Math.round(fmt.bit_rate/1000) + ' kbps');
+    s.textContent = parts.length ? parts.join('  ·  ') : '';
+  }).catch(() => {
+    document.getElementById('fm-probe-status').textContent = '';
+  });
+}
+
+function closeFm() {
+  document.getElementById('fm-overlay').classList.remove('open');
+  _fmFile = null;
+}
+
+function fmError(msg) {
+  const el = document.getElementById('fm-error');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+async function doMoveFile() {
+  if (!_fmFile) return;
+  const toCat = document.getElementById('fm-to-cat').value;
+  const toLen = _fmToLen;
+  if (toCat === _fmFile.category && toLen === _fmFile.length) {
+    fmError('ALREADY IN THAT CATEGORY/LENGTH'); return;
+  }
+  document.getElementById('fm-error').style.display = 'none';
+  const btn = document.getElementById('fm-move-btn');
+  btn.disabled = true; btn.textContent = '⌛ MOVING...';
+  try {
+    const res = await fetch(url('/api/media/move'), {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({
+        category: _fmFile.category, length: _fmFile.length, filename: _fmFile.filename,
+        to_category: toCat, to_length: toLen,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) { fmError('MOVE FAILED: ' + (data.error || res.status)); return; }
+    // Update local cache
+    if (_mmFiles) {
+      const idx = _mmFiles.findIndex(
+        f => f.category===_fmFile.category && f.length===_fmFile.length && f.filename===_fmFile.filename
+      );
+      if (idx >= 0) { _mmFiles[idx].category = toCat; _mmFiles[idx].length = toLen; }
+    }
+    closeFm();
+    renderMediaTable();
+  } catch(e) {
+    fmError('REQUEST FAILED: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '→ MOVE';
+  }
+}
+
+function armDelete() {
+  document.getElementById('fm-del-name').textContent = _fmFile?.filename || '';
+  document.getElementById('fm-delete-confirm').style.display = 'block';
+  document.getElementById('fm-error').style.display = 'none';
+}
+function disarmDelete() {
+  document.getElementById('fm-delete-confirm').style.display = 'none';
+}
+
+async function doDeleteFile() {
+  if (!_fmFile) return;
+  const btn = document.getElementById('fm-confirm-yes-btn');
+  btn.disabled = true; btn.textContent = '⌛ DELETING...';
+  document.getElementById('fm-error').style.display = 'none';
+  try {
+    const res = await fetch(url('/api/media/delete'), {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ category: _fmFile.category, length: _fmFile.length, filename: _fmFile.filename }),
+    });
+    const data = await res.json();
+    if (!res.ok) { fmError('DELETE FAILED: ' + (data.error || res.status)); return; }
+    // Remove from local cache
+    if (_mmFiles) {
+      _mmFiles = _mmFiles.filter(
+        f => !(f.category===_fmFile.category && f.length===_fmFile.length && f.filename===_fmFile.filename)
+      );
+    }
+    closeFm();
+    renderMediaTable();
+  } catch(e) {
+    fmError('REQUEST FAILED: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'CONFIRM DELETE';
+  }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeFm(); } });
 </script>
 
 </body>

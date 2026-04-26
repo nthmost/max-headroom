@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Process incoming media files: catalogue, transcode, and push to headroom
+# Process incoming media files: catalogue, transcode, and push to zikzak
 # Designed to run as a cron job every 5 minutes
 #
 # Flow:
@@ -10,7 +10,7 @@
 #       ↓ transcode
 #   /mnt/media_transcoded/<category>/<length>/
 #       ↓ rsync
-#   headroom.local:/mnt/media/
+#   zikzak.local:/mnt/media/
 #
 
 set -euo pipefail
@@ -19,9 +19,12 @@ set -euo pipefail
 INCOMING="/mnt/incoming"
 MEDIA="/mnt/media"
 TRANSCODED="/mnt/media_transcoded"
-HEADROOM="headroom.local"
+ZIKZAK="zikzak.local"
+ZIKZAK_MEDIA="/mnt/media"
 LOG_DIR="/var/log/transcode"
 LOCKFILE="/tmp/process-incoming.lock"
+VAAPI_DEVICE="/dev/dri/renderD128"
+CLEANUP_AFTER_DAYS=7  # Keep transcoded files for 7 days before cleanup
 
 # Transcode settings
 WIDTH=960
@@ -34,6 +37,13 @@ AUDIO_RATE="44100"
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
 }
+
+# Check for VAAPI device
+if [[ ! -e "$VAAPI_DEVICE" ]]; then
+    log "ERROR: VAAPI device not found: $VAAPI_DEVICE"
+    log "Make sure Intel GPU drivers are installed. Check: ls -la /dev/dri/"
+    exit 1
+fi
 
 # Prevent concurrent runs
 if [[ -f "$LOCKFILE" ]]; then
@@ -85,7 +95,13 @@ for src in "${INCOMING_FILES[@]}"; do
     transcode_dir="$TRANSCODED/$category/$length"
     media_dst="$media_dir/$filename"
     transcode_dst="$transcode_dir/${filename%.*}.mp4"
-    
+
+    # Check for per-directory crop marker (written by intake when crop_sides=True)
+    crop_sides=0
+    if [[ -f "$INCOMING/$category/$length/.crop" ]]; then
+        crop_sides=1
+    fi
+
     # Create directories
     mkdir -p "$media_dir" "$transcode_dir"
     
@@ -110,24 +126,35 @@ for src in "${INCOMING_FILES[@]}"; do
     
     # Check if file has audio
     has_audio=$(ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "$media_dst" 2>/dev/null | head -1)
-    
-    log "  Transcoding to 960x540 H.264..."
-    
+
+    # Build video filter: crop-to-fill for square videos when requested,
+    # otherwise letterbox to preserve aspect ratio.
+    if [[ $crop_sides -eq 1 ]]; then
+        # Center-crop to 16:9 slice (fills the 960x540 frame, trims top/bottom)
+        VF_FILTER="crop=in_w:in_w*9/16:0:(in_h-in_w*9/16)/2,format=nv12,hwupload,scale_vaapi=${WIDTH}:${HEIGHT}"
+        log "  Transcoding to ${WIDTH}x${HEIGHT} H.264 (crop sides)..."
+    else
+        VF_FILTER="format=nv12,hwupload,scale_vaapi=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease"
+        log "  Transcoding to ${WIDTH}x${HEIGHT} H.264..."
+    fi
+
     if [[ -z "$has_audio" ]]; then
         # No audio - add silent track
         ffmpeg -hide_banner -loglevel error -nostdin -y \
+            -vaapi_device "$VAAPI_DEVICE" \
             -i "$media_dst" \
             -f lavfi -i anullsrc=r=${AUDIO_RATE}:cl=stereo \
-            -vf "scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:-1:-1:color=black,setsar=1" \
-            -c:v h264_nvenc -preset p4 -b:v "$VIDEO_BITRATE" -profile:v main -level 4.1 \
+            -vf "$VF_FILTER" \
+            -c:v h264_vaapi -b:v "$VIDEO_BITRATE" -profile:v main -level 4.1 \
             -map 0:v -map 1:a -c:a aac -b:a ${AUDIO_BITRATE} -ar ${AUDIO_RATE} -shortest \
             -movflags +faststart \
             "$transcode_dst" 2>> "$LOG_DIR/transcode_errors.log"
     else
         ffmpeg -hide_banner -loglevel error -nostdin -y \
+            -vaapi_device "$VAAPI_DEVICE" \
             -i "$media_dst" \
-            -vf "scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:-1:-1:color=black,setsar=1" \
-            -c:v h264_nvenc -preset p4 -b:v "$VIDEO_BITRATE" -profile:v main -level 4.1 \
+            -vf "$VF_FILTER" \
+            -c:v h264_vaapi -b:v "$VIDEO_BITRATE" -profile:v main -level 4.1 \
             -map 0:v -map 0:a -c:a aac -b:a ${AUDIO_BITRATE} -ar ${AUDIO_RATE} -ac 2 \
             -movflags +faststart \
             "$transcode_dst" 2>> "$LOG_DIR/transcode_errors.log"
@@ -142,22 +169,28 @@ for src in "${INCOMING_FILES[@]}"; do
     fi
 done
 
-# Step 3: Push to headroom if we processed anything
+# Step 3: Push to zikzak if we processed anything
 if [[ ${#PROCESSED[@]} -gt 0 ]]; then
-    log "Pushing ${#PROCESSED[@]} transcoded file(s) to headroom..."
+    log "Pushing ${#PROCESSED[@]} transcoded file(s) to zikzak..."
     
-    rsync -avh --progress "$TRANSCODED/" "${HEADROOM}:${TRANSCODED/transcoded/}/" \
+    # Limit bandwidth to avoid interrupting zikzak's icecast2 stream
+    rsync -avh --progress --bwlimit=20000 "$TRANSCODED/" "${ZIKZAK}:${ZIKZAK_MEDIA}/" \
         >> "$LOG_DIR/rsync.log" 2>&1
     
     if [[ $? -eq 0 ]]; then
         log "Push complete"
         
-        # Regenerate playlists on headroom
-        log "Regenerating playlists on headroom..."
-        ssh "$HEADROOM" "sudo -u max /home/max/bin/regenerate-playlists.sh" \
+        # Regenerate playlists on zikzak
+        log "Regenerating playlists on zikzak..."
+        ssh "$ZIKZAK" "sudo -u max /home/max/bin/regenerate-playlists.sh" \
             >> "$LOG_DIR/playlist.log" 2>&1 || true
         
         log "Pipeline complete!"
+        
+        # Mark transcoded files for cleanup
+        for file in "${PROCESSED[@]}"; do
+            touch "$file"  # Update timestamp for cleanup script
+        done
     else
         log "Push FAILED - check $LOG_DIR/rsync.log"
     fi

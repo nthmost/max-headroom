@@ -1,12 +1,12 @@
 # System Tuning
 
-## headroom.local Performance Tuning
+## loki.local Performance Tuning
 
 ### Applied Tunings
 
 A systemd service applies these settings on boot:
 
-**Service:** `/etc/systemd/system/headroom-perf-tuning.service`
+**Service:** `/etc/systemd/system/loki-perf-tuning.service`
 
 | Setting | Value | Purpose |
 |---------|-------|---------|
@@ -26,7 +26,7 @@ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 cat /sys/class/drm/card1/gt_min_freq_mhz
 # Expected: 700
 
-# Check GPU power profile  
+# Check GPU power profile
 cat /sys/class/drm/card1/gt/gt0/slpc_power_profile
 # Expected: [base]
 
@@ -39,18 +39,18 @@ cat /proc/sys/vm/swappiness
 
 ```bash
 # Check status
-sudo systemctl status headroom-perf-tuning
+sudo systemctl status loki-perf-tuning
 
 # Restart (reapply settings)
-sudo systemctl restart headroom-perf-tuning
+sudo systemctl restart loki-perf-tuning
 
 # Disable (revert to defaults on next boot)
-sudo systemctl disable headroom-perf-tuning
+sudo systemctl disable loki-perf-tuning
 ```
 
-## VAAPI Hardware Encoding
+## VAAPI Hardware Encoding (loki.local)
 
-headroom.local uses Intel VAAPI for H.264 encoding:
+loki.local uses Intel VAAPI for H.264 encoding of IA downloads:
 
 ```bash
 # Check VAAPI support
@@ -66,9 +66,9 @@ ffmpeg -encoders | grep vaapi
 - VP9 (Profile 0-3)
 - AV1 (Profile 0)
 
-## loki.local NVENC
+## NVENC Hardware Encoding (zikzak)
 
-loki.local uses NVIDIA NVENC for transcoding:
+zikzak uses NVIDIA NVENC for the live streaming encode:
 
 ```bash
 # Check GPU
@@ -83,7 +83,7 @@ ffmpeg -encoders | grep nvenc
 - `p4` - Balanced (used for transcoding)
 - `p7` - Slowest, highest quality
 
-## Resource Usage
+## Resource Usage (zikzak)
 
 ### Before Optimization
 | Process | CPU |
@@ -102,15 +102,12 @@ ffmpeg -encoders | grep nvenc
 ## Monitoring
 
 ```bash
-# Real-time CPU/GPU usage
+# loki: real-time CPU/GPU usage
 htop
-
-# GPU usage (Intel)
 sudo intel_gpu_top
-
-# GPU frequency
 cat /sys/class/drm/card1/gt_cur_freq_mhz
 
-# Liquidsoap logs
+# zikzak: GPU + Liquidsoap
+nvidia-smi
 sudo tail -f /home/max/liquidsoap/channels.log
 ```

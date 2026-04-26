@@ -6,23 +6,25 @@ Multi-channel video streaming system for CRT quad-mux display.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                       headroom.local                                │
-│                   (Transcoding Appliance)                           │
+│                          loki.local                                  │
+│               Intake Web App · Download · Transcode                  │
 │                                                                     │
-│  /mnt/incoming/        ──transcode──▶  /mnt/media_transcoded/      │
-│  (new downloads)         (VAAPI)        (960x540 H.264)            │
-│         │                                      │                    │
-│         └──catalogue──▶ /mnt/media/            │                    │
-│            (originals, auto-cleanup)           │ rsync              │
-└────────────────────────────────────────────────┼────────────────────┘
-                                                 │
-                                                 ▼
+│  YouTube: yt-dlp ──────────────────────────────────────────────┐    │
+│                                                                 │    │
+│  Internet Archive:                                             │    │
+│  /mnt/incoming/ ──transcode (VAAPI)──▶ /mnt/media_transcoded/ │    │
+│  (new downloads)   960x540 H.264           │                   │    │
+│         │                                  │ rsync             │    │
+│         └──catalogue──▶ /mnt/media/        │ (bwlimit=20MB/s)  │    │
+└────────────────────────────────────────────┼───────────────────┘    │
+                                             │                        │
+                                             ▼                        │ rsync
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         zikzak (Noisebridge)                        │
 │               i7 + GTX 1060 · Streaming Server                      │
 │                                                                     │
 │  /mnt/media/  ──▶  liquidsoap  ──▶  NVENC encode  ──▶  Icecast     │
-│  (transcoded)       4 channels      H.264/AAC      localhost:8000   │
+│  (media files)      4 channels      H.264/AAC      localhost:8000   │
 │                                                          │           │
 │  HDMI Quad Splitter ──▶ CRTs        relay ffmpeg ───────┘           │
 │  (local display)        (ch1-4)     (mhbn-relay-ch{1-4})            │
@@ -41,19 +43,19 @@ Multi-channel video streaming system for CRT quad-mux display.
 
 ## Directory Structure
 
-### headroom.local (Transcoding Appliance)
+### loki.local (Intake + Transcode)
 
 | Directory | Purpose |
 |-----------|---------|
-| `/mnt/incoming/` | **Incoming** - New downloads (auto-processed by cron) |
-| `/mnt/media/` | **Originals** - Catalogued source files (auto-cleanup after 7 days) |
+| `/mnt/incoming/` | **Incoming** - New IA downloads (auto-processed by cron) |
+| `/mnt/media/` | **Originals** - Catalogued source files |
 | `/mnt/media_transcoded/` | **Output** - Transcoded 960x540 H.264 (auto-cleanup after 7 days) |
 
 ### zikzak (Streaming Server)
 
 | Directory | Purpose |
 |-----------|---------|
-| `/mnt/media/` | **Transcoded** - 960x540 H.264 files (from headroom) |
+| `/mnt/media/` | **Media files** - 960x540 H.264 (from loki) and YouTube downloads |
 | `/home/max/playlists/` | M3U playlists (auto-generated) |
 | `/home/max/liquidsoap/` | Liquidsoap config + log |
 | `/home/max/bin/` | HLS segmenter scripts (`hls-ch{1-4}.sh`) |
@@ -67,14 +69,22 @@ Multi-channel video streaming system for CRT quad-mux display.
 | ch3 | `mixed.m3u` | Mixed lengths |
 | ch4 | `mixed.m3u` | Mixed lengths |
 
-**Workflow:**
+**Workflow (Internet Archive):**
 ```
-headroom:/mnt/incoming/gaming_memes/short/Video.webm
+loki:/mnt/incoming/gaming_memes/short/Video.webm
      ↓ catalogue
-headroom:/mnt/media/gaming_memes/short/Video.webm
-     ↓ transcode (VAAPI)
-headroom:/mnt/media_transcoded/gaming_memes/short/Video.mp4
+loki:/mnt/media/gaming_memes/short/Video.webm
+     ↓ transcode (VAAPI, 960x540 H.264)
+loki:/mnt/media_transcoded/gaming_memes/short/Video.mp4
      ↓ rsync (bwlimit=20MB/s)
+zikzak:/mnt/media/gaming_memes/short/Video.mp4
+     ↓ liquidsoap streams from here to icecast2
+```
+
+**Workflow (YouTube):**
+```
+loki: yt-dlp download to staging
+     ↓ rsync directly
 zikzak:/mnt/media/gaming_memes/short/Video.mp4
      ↓ liquidsoap streams from here to icecast2
 ```
@@ -82,7 +92,7 @@ zikzak:/mnt/media/gaming_memes/short/Video.mp4
 ## Quick Start: Adding New Videos
 
 ```bash
-# On headroom.local:
+# On loki.local:
 
 # 1. Download video to incoming directory
 yt-dlp -f 'bestvideo+bestaudio/best' \
@@ -118,38 +128,20 @@ Videos are organized by category and length:
 └── ...
 ```
 
-### Adding New Media (Automated Pipeline)
+### Adding New Media
 
-1. **Download** to `/mnt/incoming/<category>/<length>/` on headroom
-2. **Wait** — cron runs `process-incoming.sh` every 5 minutes
-3. Pipeline automatically: catalogues → transcodes (VAAPI) → regenerates playlists
-
-### Downloading from YouTube (on headroom.local)
-
-```bash
-# Check video info
-~/.local/bin/yt-dlp --get-title --get-duration 'URL'
-
-# Download to incoming (pipeline handles the rest)
-~/.local/bin/yt-dlp -f 'bestvideo+bestaudio/best' \
-    -o '/mnt/incoming/<category>/<length>/%(title)s.%(ext)s' 'URL'
-```
-
-Categories: `cyberpunk_anime`, `darkwave_postpunk`, `house_music`, `neon_synthpop`, etc.
-Length: `short` (<5min), `medium` (5-30min), `long` (>30min)
-
-Create new categories as needed - just add a directory.
+Use the **intake web app** at `http://loki.local:8765/` — paste a YouTube URL or Internet Archive identifier, pick a category, and queue it. The app handles download, transcode (if needed), push to zikzak, and playlist regeneration automatically.
 
 ### Manual Pipeline (if needed)
 
 ```bash
-# On headroom.local:
-~/bin/process-incoming.sh        # Process incoming now (full pipeline)
+# On loki.local:
+~/bin/process-incoming.sh        # Process /mnt/incoming/ now (full pipeline)
 
 # Or individual steps:
 ~/bin/transcode-for-quadmux.sh   # Transcode /mnt/media/ → /mnt/media_transcoded/
 ~/bin/push-to-zikzak.sh          # Push to zikzak and trigger playlist regen
-~/bin/cleanup-transcoded.sh      # Cleanup old files on headroom (run weekly)
+~/bin/cleanup-transcoded.sh      # Cleanup old transcoded files (run weekly)
 ```
 
 ### Transcoding Specs
@@ -171,10 +163,13 @@ Create new categories as needed - just add a directory.
 
 ## Services
 
-### headroom.local (Transcoding)
+### loki.local (Intake + Transcode)
 ```bash
+# Intake web app
+sudo systemctl status intake
+
 # Cron jobs
-crontab -l  # View scheduled tasks (process-incoming.sh, cleanup, etc.)
+crontab -l  # process-incoming.sh (every 5 min), cleanup-transcoded.sh (weekly)
 ```
 
 ### zikzak (Streaming)
@@ -209,6 +204,6 @@ sudo systemctl status mhbn-hls-ch{1,2,3,4}
 
 | Host | CPU | GPU | Role |
 |------|-----|-----|------|
-| headroom.local | i5-14450HX | Intel UHD (VAAPI) | Transcoding appliance (temp storage) |
+| loki.local | i5-14450HX | Intel UHD (VAAPI) | Intake app, IA transcode, YouTube download |
 | zikzak | i7 | GTX 1060 (NVENC) | Streaming server — Liquidsoap + 4-ch encode → Icecast |
 | zephyr | — | — | VPS (nthmost.com) — Icecast relay + HLS segmenters + nginx |

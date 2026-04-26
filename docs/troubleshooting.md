@@ -29,7 +29,7 @@ find /mnt/media -type f \( -name "*.ogv" -o -name "*.webm" -o -name "*.mkv" \)
 
 ### Transcode Failures
 
-Check logs on headroom.local:
+Check logs on loki:
 ```bash
 cat /var/log/transcode/fail_*.log
 ```
@@ -172,9 +172,9 @@ sudo systemctl restart mhbn-hls-ch{1,2,3,4}
 
 ### Restore from Backup
 
-If media is corrupted, restore from headroom.local:
+If media is corrupted, re-add via the intake app or restore from a backup:
 ```bash
-# On headroom.local:
+# On loki:
 rsync -avh /mnt/media_transcoded/ zikzak:/mnt/media/
 
 # On zikzak:

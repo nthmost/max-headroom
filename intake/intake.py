@@ -10,7 +10,7 @@ import re
 import threading
 import time
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, abort
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
@@ -107,6 +107,9 @@ def api_analyze():
             metadata = downloader.resolve_ia_rich_metadata(identifier)
 
         result = analyzer.classify(metadata)
+        w = metadata.get("width")
+        h = metadata.get("height")
+        is_square = bool(w and h and 0.8 <= w / h <= 1.25)
         return jsonify(
             title=metadata["title"],
             duration_seconds=metadata.get("duration_seconds"),
@@ -114,6 +117,7 @@ def api_analyze():
             is_new_category=result.get("is_new_category", False),
             length=result["length"],
             reasoning=result["reasoning"],
+            is_square=is_square,
         )
     except Exception as exc:
         return jsonify(error=str(exc)), 500
@@ -128,6 +132,7 @@ def api_submit():
     category = data.get("category", "")
     length = data.get("length", "auto")  # 'auto', 'short', 'medium', 'long'
     is_playlist = data.get("playlist", False)
+    crop_sides = bool(data.get("crop_sides", False))
 
     if source not in ("youtube", "ia", "playlist_file"):
         return jsonify(error="source must be youtube, ia, or playlist_file"), 400
@@ -155,7 +160,7 @@ def api_submit():
                     return jsonify(error=f"could not expand playlist: {url}"), 400
                 for video_url, title, duration in entries:
                     resolved_length = length if length != "auto" else classify_length(duration)
-                    jid = db.insert_job(video_url, title, "youtube", category, resolved_length)
+                    jid = db.insert_job(video_url, title, "youtube", category, resolved_length, crop_sides)
                     job_ids.append(jid)
             else:
                 if length == "auto":
@@ -169,7 +174,7 @@ def api_submit():
                 else:
                     title, _ = downloader.resolve_youtube_metadata(url)
                     resolved_length = length
-                jid = db.insert_job(url, title, "youtube", category, resolved_length)
+                jid = db.insert_job(url, title, "youtube", category, resolved_length, crop_sides)
                 job_ids.append(jid)
 
         elif source == "ia":
@@ -178,7 +183,7 @@ def api_submit():
                 return jsonify(error=f"not a valid IA identifier or URL: {url}"), 400
             title, duration = downloader.resolve_ia_metadata(identifier)
             resolved_length = length if length != "auto" else classify_length(duration)
-            jid = db.insert_job(identifier, title, "ia", category, resolved_length)
+            jid = db.insert_job(identifier, title, "ia", category, resolved_length, crop_sides)
             job_ids.append(jid)
 
         elif source == "playlist_file":
@@ -191,7 +196,7 @@ def api_submit():
                     title, resolved_length = url, "medium"
             else:
                 title, resolved_length = url, length
-            jid = db.insert_job(url, title, "youtube", category, resolved_length)
+            jid = db.insert_job(url, title, "youtube", category, resolved_length, crop_sides)
             job_ids.append(jid)
 
     return jsonify(job_ids=job_ids, queued=len(job_ids))
@@ -221,6 +226,24 @@ def api_job_log(job_id):
     return jsonify(lines=[l.rstrip() for l in lines[-tail:]])
 
 
+@app.route("/api/job/<int:job_id>/purge", methods=["POST"])
+def api_job_purge(job_id):
+    """Cancel if running, delete all pipeline files, remove from DB."""
+    job = db.get_job(job_id)
+    if not job:
+        abort(404)
+    # Cancel first if still in flight
+    if job["status"] in ("running", "pending") and job.get("pid"):
+        try:
+            os.kill(job["pid"], 15)
+        except ProcessLookupError:
+            pass
+    # Delete remote/local files
+    result = downloader.purge_job_files(job)
+    db.delete_job(job_id)
+    return jsonify(ok=True, **result)
+
+
 @app.route("/api/job/<int:job_id>/cancel", methods=["POST"])
 def api_job_cancel(job_id):
     job = db.get_job(job_id)
@@ -233,6 +256,77 @@ def api_job_cancel(job_id):
             pass
     db.mark_cancelled(job_id)
     return jsonify(ok=True)
+
+
+# ─── Media manager ───────────────────────────────────────────────────────────
+
+def _valid_cat(c):
+    return bool(re.match(r'^[a-z][a-z0-9_]*$', c or ""))
+
+def _valid_len(l):
+    return l in ("short", "medium", "long")
+
+def _valid_fname(f):
+    import posixpath
+    return bool(f) and f == posixpath.basename(f) and ".." not in f
+
+
+@app.route("/api/media")
+def api_media_list():
+    category = request.args.get("category") or None
+    length   = request.args.get("length")   or None
+    if category and not _valid_cat(category):
+        return jsonify(error="invalid category"), 400
+    if length and not _valid_len(length):
+        return jsonify(error="invalid length"), 400
+    try:
+        files = downloader.list_zikzak_media(category, length)
+        return jsonify(files)
+    except Exception as exc:
+        return jsonify(error=str(exc)), 500
+
+
+@app.route("/api/media/probe", methods=["POST"])
+def api_media_probe():
+    d = request.get_json(force=True)
+    cat, leng, fname = d.get("category",""), d.get("length",""), d.get("filename","")
+    if not _valid_cat(cat) or not _valid_len(leng) or not _valid_fname(fname):
+        return jsonify(error="invalid params"), 400
+    try:
+        return jsonify(downloader.probe_zikzak_file(cat, leng, fname))
+    except Exception as exc:
+        return jsonify(error=str(exc)), 500
+
+
+@app.route("/api/media/delete", methods=["POST"])
+def api_media_delete():
+    d = request.get_json(force=True)
+    cat, leng, fname = d.get("category",""), d.get("length",""), d.get("filename","")
+    if not _valid_cat(cat) or not _valid_len(leng) or not _valid_fname(fname):
+        return jsonify(error="invalid params"), 400
+    try:
+        downloader.delete_media_file(cat, leng, fname)
+        return jsonify(ok=True)
+    except Exception as exc:
+        return jsonify(error=str(exc)), 500
+
+
+@app.route("/api/media/move", methods=["POST"])
+def api_media_move():
+    d = request.get_json(force=True)
+    cat, leng, fname = d.get("category",""), d.get("length",""), d.get("filename","")
+    to_cat  = d.get("to_category","")
+    to_leng = d.get("to_length","")
+    if not all([_valid_cat(cat), _valid_len(leng), _valid_fname(fname),
+                _valid_cat(to_cat), _valid_len(to_leng)]):
+        return jsonify(error="invalid params"), 400
+    if cat == to_cat and leng == to_leng:
+        return jsonify(error="source and destination are the same"), 400
+    try:
+        downloader.move_media_file(cat, leng, fname, to_cat, to_leng)
+        return jsonify(ok=True)
+    except Exception as exc:
+        return jsonify(error=str(exc)), 500
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────

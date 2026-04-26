@@ -25,13 +25,20 @@ def init_db():
                 log_path    TEXT,
                 error_msg   TEXT,
                 updated_at  TEXT NOT NULL,
-                pipeline_status TEXT DEFAULT NULL
+                pipeline_status TEXT DEFAULT NULL,
+                crop_sides  INTEGER NOT NULL DEFAULT 0,
+                filename    TEXT DEFAULT NULL
             )
         """)
-        try:
-            conn.execute("ALTER TABLE jobs ADD COLUMN pipeline_status TEXT DEFAULT NULL")
-        except Exception:
-            pass
+        for col, defn in [
+            ("pipeline_status", "TEXT DEFAULT NULL"),
+            ("crop_sides", "INTEGER NOT NULL DEFAULT 0"),
+            ("filename", "TEXT DEFAULT NULL"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {defn}")
+            except Exception:
+                pass
         conn.execute("""
             CREATE TABLE IF NOT EXISTS user_categories (
                 name TEXT PRIMARY KEY,
@@ -60,13 +67,29 @@ def _now():
     return datetime.datetime.utcnow().isoformat()
 
 
-def insert_job(url, title, source, category, length):
+def set_filename(job_id, filename):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE jobs SET filename = ?, updated_at = ? WHERE id = ?",
+            (filename, _now(), job_id),
+        )
+        conn.commit()
+
+
+def delete_job(job_id):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+        conn.commit()
+
+
+def insert_job(url, title, source, category, length, crop_sides=False):
     now = _now()
     with get_conn() as conn:
         cur = conn.execute(
-            """INSERT INTO jobs (created_at, url, title, source, category, length, status, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)""",
-            (now, url, title, source, category, length, now),
+            """INSERT INTO jobs
+               (created_at, url, title, source, category, length, status, updated_at, crop_sides)
+               VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)""",
+            (now, url, title, source, category, length, now, int(bool(crop_sides))),
         )
         conn.commit()
         return cur.lastrowid

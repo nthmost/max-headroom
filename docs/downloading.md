@@ -6,7 +6,7 @@ Guide for acquiring new content from YouTube and other sources.
 
 ```
 ┌──────────────┐     ┌─────────────────────────┐     ┌─────────────────────┐
-│   YouTube    │────▶│       loki.local        │────▶│   headroom.local    │
+│   YouTube    │────▶│       loki.local        │────▶│    zikzak.local     │
 │   (source)   │     │  /mnt/incoming/<cat>/   │     │    /mnt/media/      │
 └──────────────┘     └─────────────────────────┘     └─────────────────────┘
                               ↓ (cron every 5 min)
@@ -14,13 +14,13 @@ Guide for acquiring new content from YouTube and other sources.
                      │ process-incoming.sh     │
                      │ 1. Move to /mnt/media/  │
                      │ 2. Transcode (NVENC)    │
-                     │ 3. Push to headroom     │
+                     │ 3. Push to zikzak       │
                      │ 4. Regenerate playlists │
                      └─────────────────────────┘
 ```
 
-**Drop downloads into `/mnt/incoming/<category>/<length>/` on loki.local.**  
-The pipeline automatically catalogues, transcodes, and deploys to headroom.
+**Drop downloads into `/mnt/incoming/<category>/<length>/` on loki.local.**
+The pipeline automatically catalogues, transcodes, and deploys to zikzak.
 
 ## Requirements
 
@@ -95,8 +95,8 @@ Download to the **incoming** folder — the pipeline handles the rest automatica
 The `process-incoming.sh` cron job runs every 5 minutes and will:
 1. Move the file to `/mnt/media/<category>/<length>/`
 2. Transcode to 960x540 H.264 using NVENC
-3. Push transcoded file to headroom.local
-4. Regenerate playlists on headroom
+3. Push transcoded file to zikzak.local
+4. Regenerate playlists on zikzak
 
 **Check progress:** `tail -f /var/log/transcode/cron.log`
 
@@ -192,13 +192,8 @@ If content doesn't fit existing categories:
    mkdir -p /mnt/incoming/new_category/{short,medium,long}
    ```
 
-2. Create directory on headroom:
-   ```bash
-   ssh headroom.local "mkdir -p /mnt/media/new_category/{short,medium,long}"
-   ```
-
-3. Download content to `/mnt/incoming/new_category/<length>/`
-4. Pipeline handles the rest automatically
+2. Download content to `/mnt/incoming/new_category/<length>/`
+3. Pipeline handles the rest automatically
 
 ## Troubleshooting
 
@@ -239,7 +234,7 @@ May require cookies:
 | `/mnt/incoming/` | loki.local | **Drop downloads here** |
 | `/mnt/media/` | loki.local | Catalogued originals (auto-populated) |
 | `/mnt/media_transcoded/` | loki.local | Transcoded 960x540 H.264 (auto-populated) |
-| `/mnt/media/` | headroom.local | Deployed transcoded media |
+| `/mnt/media/` | zikzak.local | Deployed transcoded media (permanent) |
 | `~/.local/bin/yt-dlp` | loki.local | yt-dlp binary |
 | `~/bin/process-incoming.sh` | loki.local | Pipeline script (cron every 5 min) |
 | `/var/log/transcode/` | loki.local | Pipeline logs |
@@ -257,8 +252,8 @@ The `process-incoming.sh` script runs via cron every 5 minutes:
 1. **Scans** `/mnt/incoming/` for new media files
 2. **Moves** files to `/mnt/media/<category>/<length>/` (cataloguing)
 3. **Transcodes** to 960x540 H.264 using NVENC GPU acceleration
-4. **Pushes** transcoded files to `headroom.local:/mnt/media/`
-5. **Regenerates** playlists on headroom
+4. **Pushes** transcoded files to `zikzak.local:/mnt/media/`
+5. **Regenerates** playlists on zikzak
 
 ### Logs
 

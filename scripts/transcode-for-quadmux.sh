@@ -1,18 +1,34 @@
 #!/bin/bash
 #
 # Transcode all media to 960x540 H.264 for quad-mux output
-# Uses NVENC for hardware acceleration
+# Uses VAAPI (Intel UHD GPU) for hardware acceleration
 #
 
 SRC_BASE="/mnt/media"
 DST_BASE="/mnt/media_transcoded"
 LOG_DIR="/var/log/transcode"
+VAAPI_DEVICE="/dev/dri/renderD128"
 
 WIDTH=960
 HEIGHT=540
 VIDEO_BITRATE="1200k"
 AUDIO_BITRATE="128k"
 AUDIO_RATE="44100"
+
+# Check for VAAPI device
+if [[ ! -e "$VAAPI_DEVICE" ]]; then
+    echo "ERROR: VAAPI device not found: $VAAPI_DEVICE"
+    echo "Make sure Intel GPU drivers are installed and loaded."
+    echo "Check available devices: ls -la /dev/dri/"
+    exit 1
+fi
+
+# Verify ffmpeg has VAAPI support
+if ! ffmpeg -hide_banner -encoders 2>/dev/null | grep -q h264_vaapi; then
+    echo "ERROR: ffmpeg does not have h264_vaapi encoder support"
+    echo "Install ffmpeg with VAAPI: sudo apt install ffmpeg vainfo intel-media-va-driver"
+    exit 1
+fi
 
 # Create directories
 sudo mkdir -p "$DST_BASE" "$LOG_DIR"
@@ -30,8 +46,9 @@ echo "=========================================="
 echo "Source:      $SRC_BASE"
 echo "Destination: $DST_BASE"
 echo "Resolution:  ${WIDTH}x${HEIGHT}"
-echo "Video:       H.264 NVENC @ $VIDEO_BITRATE"
+echo "Video:       H.264 VAAPI @ $VIDEO_BITRATE"
 echo "Audio:       AAC @ $AUDIO_BITRATE"
+echo "VAAPI:       $VAAPI_DEVICE"
 echo "=========================================="
 
 # Find all media files
@@ -67,18 +84,20 @@ for i in "${!FILES[@]}"; do
     if [[ -z "$has_audio" ]]; then
         # No audio - add silent track
         ffmpeg -hide_banner -loglevel error -nostdin -y \
+            -vaapi_device "$VAAPI_DEVICE" \
             -i "$src" \
             -f lavfi -i anullsrc=r=${AUDIO_RATE}:cl=stereo \
-            -vf "scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:-1:-1:color=black,setsar=1" \
-            -c:v h264_nvenc -preset p4 -b:v "$VIDEO_BITRATE" -profile:v main -level 4.1 \
+            -vf "format=nv12,hwupload,scale_vaapi=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease" \
+            -c:v h264_vaapi -b:v "$VIDEO_BITRATE" -profile:v main -level 4.1 \
             -map 0:v -map 1:a -c:a aac -b:a ${AUDIO_BITRATE} -ar ${AUDIO_RATE} -shortest \
             -movflags +faststart \
             "$dst" 2>> "$FAIL_LOG"
     else
         ffmpeg -hide_banner -loglevel error -nostdin -y \
+            -vaapi_device "$VAAPI_DEVICE" \
             -i "$src" \
-            -vf "scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:-1:-1:color=black,setsar=1" \
-            -c:v h264_nvenc -preset p4 -b:v "$VIDEO_BITRATE" -profile:v main -level 4.1 \
+            -vf "format=nv12,hwupload,scale_vaapi=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease" \
+            -c:v h264_vaapi -b:v "$VIDEO_BITRATE" -profile:v main -level 4.1 \
             -map 0:v -map 0:a -c:a aac -b:a ${AUDIO_BITRATE} -ar ${AUDIO_RATE} -ac 2 \
             -movflags +faststart \
             "$dst" 2>> "$FAIL_LOG"
