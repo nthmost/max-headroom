@@ -85,19 +85,29 @@ ffmpeg -encoders | grep nvenc
 
 ## Resource Usage (zikzak)
 
-### Before Optimization
+### Expected Normal State
 | Process | CPU |
 |---------|-----|
-| Liquidsoap | ~110% |
-| FFmpeg (x2) | ~10% each |
+| Liquidsoap (zikzak-liquidsoap) | ~30% |
+| FFmpeg × 4 (NVENC encoders) | ~8% each |
+| mpv (quadmux display) | ~70% |
 | **Total** | ~130% |
 
-### After Optimization
-| Process | CPU |
-|---------|-----|
-| Liquidsoap | ~30% |
-| FFmpeg (x2) | ~10% each |
-| **Total** | ~50% |
+If liquidsoap is significantly above 30%, see [Liquidsoap High CPU](troubleshooting.md#liquidsoap-high-cpu-80-100) in the troubleshooting guide.
+
+### Services on zikzak
+
+| Service | Purpose | Should be running? |
+|---------|---------|-------------------|
+| `zikzak-liquidsoap` | 4-channel video streams → Icecast | Yes |
+| `quadmux-display` (user) | mpv quad-mux to HDMI display | Yes |
+| `icecast2` | Local Icecast server | Yes |
+| `zikzak-hls-ch{1-4}` | Local HLS segmenters | Yes |
+| `mhbn-relay-ch{1-4}` | Relay to zephyr/nthmost.com | Yes |
+| `maxheadroom` | **Removed** — old audio-only liquidsoap instance | No (deleted) |
+| `maxheadroom-stream` | Old stream-to-icecast script | No (legacy) |
+
+**Note:** `quadmux-display` is managed exclusively by the systemd user service at `~/.config/systemd/user/quadmux-display.service`. The XFCE autostart entry (`~/.config/autostart/quadmux-display.desktop`) was removed to prevent duplicate instances.
 
 ## Monitoring
 

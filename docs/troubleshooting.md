@@ -27,6 +27,48 @@ If CPU is high, some media may not be transcoded. Check for non-MP4 files:
 find /mnt/media -type f \( -name "*.ogv" -o -name "*.webm" -o -name "*.mkv" \)
 ```
 
+### Liquidsoap High CPU (~80-100%)
+
+**Symptom:** `zikzak-liquidsoap` pegged at 80%+ CPU; log shows repeated `We must catchup X seconds!`
+
+**Cause 1: Memory bloat after long uptime.** Liquidsoap accumulates video frame buffers over days and starts swapping. Fix: restart the service.
+
+```bash
+sudo systemctl restart zikzak-liquidsoap
+```
+
+**Cause 2: Duplicate quadmux-display process.** If two `mpv` processes appear in `ps aux`, one was launched by XFCE autostart and one by the systemd user service — they stack fullscreen on the same display and both decode all 4 channels. Check:
+
+```bash
+ps aux | grep mpv | grep -v grep
+```
+
+If two are running, the autostart entry was not removed. Remove it and kill the duplicate:
+
+```bash
+rm /home/max/.config/autostart/quadmux-display.desktop
+kill <PID of the older mpv>
+```
+
+The systemd user service (`~/.config/systemd/user/quadmux-display.service`) is the correct one to keep.
+
+### Green Overlay on All Channels
+
+**Symptom:** All 4 output channels show a green tint/overlay immediately after a liquidsoap restart.
+
+**Cause:** The liquidsoap canvas height must be **720**, not 540. Even though source files are 960x540, the raw video pipe to ffmpeg NVENC requires the frame height to be a multiple of 16 for correct stride alignment. 720 satisfies this; 540 does not, causing green color plane corruption.
+
+**Do not change** `settings.frame.video.height` in `channels.liq` away from 720. The letterboxing to 960x720 is intentional.
+
+To recover, revert the setting and restart:
+
+```bash
+# On zikzak:
+grep "frame.video.height" /home/max/liquidsoap/channels.liq
+# Must show: settings.frame.video.height.set(720)
+sudo systemctl restart zikzak-liquidsoap
+```
+
 ### Transcode Failures
 
 Check logs on loki:
