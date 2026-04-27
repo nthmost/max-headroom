@@ -92,8 +92,11 @@ ffmpeg -encoders | grep nvenc
 | FFmpeg × 4 (NVENC encoders) | ~8% each |
 | mpv (quadmux display) | ~70% |
 | **Total** | ~130% |
+| **Load average** | ~1.5–2.0 |
 
-If liquidsoap is significantly above 30%, see [Liquidsoap High CPU](troubleshooting.md#liquidsoap-high-cpu-80-100) in the troubleshooting guide.
+Note: liquidsoap spikes to ~75% for a few minutes after a restart while it probes playlist files. This is normal — wait for it to settle before diagnosing high CPU.
+
+If liquidsoap remains significantly above 30% after settling, see [Liquidsoap High CPU](troubleshooting.md#liquidsoap-high-cpu-80-100) in the troubleshooting guide.
 
 ### Services on zikzak
 
