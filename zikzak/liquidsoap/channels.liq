@@ -46,11 +46,36 @@ def random_pick(files) =
   end
 end
 
+# ── Now-playing metadata → Icecast ─────────────────────────────────────────────
+# On each main-content track change, push "Title [category]" to both the local
+# icecast (zikzak) and the relay icecast (nthmost.com). The webapp reads
+# http://nthmost.com:8000/status-json.xsl to display now-playing info.
+
+def push_nowplaying(local_mount, relay_mount, meta) =
+  filename = meta["filename"]
+  if filename != "" and meta["is_insert"] != "true" then
+    # Build "Title [category]" label from the file path
+    # Path format: /mnt/media/<category>/<length>/<title>.mp4
+    label = string.trim(
+      (process.run(
+        "f=" ^ string.quote(filename) ^ "; " ^
+        "title=$(basename \"$f\" | sed 's/\\.[^.]*$//'); " ^
+        "cat=$(echo \"$f\" | cut -d/ -f4); " ^
+        "if [ -n \"$cat\" ]; then echo \"$title [$cat]\"; else echo \"$title\"; fi"
+      )).stdout
+    )
+    curl_meta = "curl -sf --get --data-urlencode " ^ string.quote("song=" ^ label) ^ " --data mode=updinfo "
+    ignore(process.run(curl_meta ^ string.quote("http://admin:noisebridge@localhost:8000/admin/metadata?mount=" ^ local_mount)))
+    ignore(process.run(curl_meta ^ string.quote("http://admin:k0l9j8@nthmost.com:8000/admin/metadata?mount=" ^ relay_mount)))
+  end
+end
+
 # ── ch1: Long-form music only, no interruptions ────────────────────────────────
 # Feed: music-long.m3u (DJ sets, live concerts, long mixes)
 
 def make_music_channel(id) =
   s = playlist(id="#{id}", mode="randomize", reload_mode="watch", music_long_playlist)
+  s.on_track(fun(meta) -> push_nowplaying("/#{id}.ts", "/mhbn-#{id}.ts", meta))
   mksafe(s)
 end
 
@@ -68,9 +93,10 @@ def make_programmed_channel(id) =
 
   s = fallback(track_sensitive=true, [inject, content])
 
-  s.on_track(fun(_) ->
+  s.on_track(fun(meta) ->
     if not last_was_insert() then
-      # A main content track just started — schedule an insert after it
+      # A main content track just started — push metadata and schedule an insert
+      push_nowplaying("/#{id}.ts", "/mhbn-#{id}.ts", meta)
       last_was_insert := true
       track_count := track_count() + 1
       files =

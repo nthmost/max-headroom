@@ -407,6 +407,7 @@
   function switchChannel(screenNum, channelNum) {
     channelNum = parseInt(channelNum);
     attachHLS(screenNum, channelNum);
+    updateDesc(screenNum);
   }
 
   // Audio controls
@@ -447,6 +448,37 @@
   if (window.location.hostname.includes('nthmost')) {
     document.getElementById('sysver').textContent = 'MHBN-SYS v0.2 · HEADROOM.NTHMOST.NET';
   }
+
+  // Now-playing metadata from icecast status-json
+  var nowPlayingData = {};
+
+  function fetchNowPlaying() {
+    fetch('http://nthmost.com:8000/status-json.xsl')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var sources = data.icestats.source;
+        if (!Array.isArray(sources)) sources = sources ? [sources] : [];
+        sources.forEach(function(s) {
+          var m = (s.listenurl || '').match(/mhbn-ch(\d+)\.ts$/);
+          if (m) {
+            var ch = parseInt(m[1]);
+            nowPlayingData[ch] = s.title || s.server_name || '';
+          }
+        });
+        [1, 2].forEach(updateDesc);
+      })
+      .catch(function() {});
+  }
+
+  function updateDesc(screenNum) {
+    var ch = currentChannels[screenNum];
+    var el = document.getElementById('desc' + screenNum);
+    var title = nowPlayingData[ch];
+    el.textContent = title ? '▶ ' + title : '';
+  }
+
+  fetchNowPlaying();
+  setInterval(fetchNowPlaying, 15000);
 
   // Initialize with ch1 and ch2
   attachHLS(1, 1);
