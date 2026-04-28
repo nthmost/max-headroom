@@ -356,6 +356,11 @@
     font-size: 0.7rem; padding: 1px 5px; border: 1px solid var(--amber-dim);
     color: var(--amber-dim); white-space: nowrap;
   }
+  .mm-tag {
+    font-size: 0.65rem; padding: 1px 5px; border: 1px solid #2a4a2a;
+    color: #559955; white-space: nowrap; display: inline-block;
+  }
+  .mm-tags { display: flex; flex-wrap: wrap; gap: 3px; }
   .mm-empty { padding: 24px; color: var(--amber-dim); letter-spacing: 0.2em; text-align: center; }
 
   /* ── File detail modal ── */
@@ -576,6 +581,7 @@
           <th onclick="mmSort('filename')">FILENAME</th>
           <th onclick="mmSort('category')">CATEGORY</th>
           <th onclick="mmSort('length')">LEN</th>
+          <th>TAGS</th>
           <th onclick="mmSort('size')">SIZE</th>
           <th onclick="mmSort('mtime')">DATE</th>
         </tr>
@@ -1259,14 +1265,20 @@ function renderMediaTable() {
     return;
   }
 
-  tbody.innerHTML = rows.map((f, i) => `
+  tbody.innerHTML = rows.map((f, i) => {
+    const tagHtml = (f.tags && f.tags.length)
+      ? `<div class="mm-tags">${f.tags.map(t => `<span class="mm-tag">${escHtml(t.replace(/_/g,' '))}</span>`).join('')}</div>`
+      : '';
+    return `
     <tr data-mmidx="${i}" onclick="openFmByIdx(this.dataset.mmidx)">
       <td class="td-filename" title="${escHtml(f.filename)}">${escHtml(f.filename)}</td>
       <td class="td-dim">${escHtml(f.category.replace(/_/g,' '))}</td>
       <td><span class="mm-len-badge">${escHtml(f.length)}</span></td>
+      <td>${tagHtml}</td>
       <td class="td-dim">${fmtSize(f.size)}</td>
       <td class="td-dim">${fmtAge(f.mtime)}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   // Store rendered order so openFmByIdx can look up the right file
   tbody._renderedRows = rows;
@@ -1299,9 +1311,13 @@ function openFm(f) {
   document.getElementById('fm-filename').textContent = f.filename;
 
   const grid = document.getElementById('fm-meta-grid');
+  const tagBadges = (f.tags && f.tags.length)
+    ? f.tags.map(t => `<span class="mm-tag">${escHtml(t.replace(/_/g,' '))}</span>`).join(' ')
+    : '—';
   grid.innerHTML = `
     <span class="k">CATEGORY</span><span class="v">${escHtml(f.category.replace(/_/g,' ').toUpperCase())}</span>
     <span class="k">LENGTH</span>  <span class="v">${escHtml(f.length.toUpperCase())}</span>
+    <span class="k">TAGS</span>    <span class="v" style="display:flex;flex-wrap:wrap;gap:3px">${tagBadges}</span>
     <span class="k">SIZE</span>    <span class="v">${fmtSize(f.size)}</span>
     <span class="k">MODIFIED</span><span class="v">${new Date(f.mtime*1000).toLocaleDateString()}</span>
   `;

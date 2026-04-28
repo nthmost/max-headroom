@@ -64,69 +64,62 @@ Multi-channel video streaming system for CRT quad-mux display.
 
 | Channel | Playlist | Content |
 |---------|----------|---------|
-| ch1 | `all-long.m3u` | Files > 30 min |
-| ch2 | `all-short.m3u` | Files < 5 min |
-| ch3 | `mixed.m3u` | Mixed lengths |
-| ch4 | `mixed.m3u` | Mixed lengths |
+| ch1 | `music-long.m3u` | Music — long + medium tracks only |
+| ch2 | `short-medium.m3u` | Mixed general content (short + medium) |
+| ch3 | `short-medium.m3u` | Mixed general content (short + medium) |
+| ch4 | `short-medium.m3u` | Mixed general content (short + medium) |
+
+ch2/3/4 inject an interstitial after every clip and a commercial every 10th clip via liquidsoap request.queue.
 
 **Workflow (Internet Archive):**
 ```
-loki:/mnt/incoming/gaming_memes/short/Video.webm
-     ↓ catalogue
-loki:/mnt/media/gaming_memes/short/Video.webm
-     ↓ transcode (VAAPI, 960x540 H.264)
-loki:/mnt/media_transcoded/gaming_memes/short/Video.mp4
+loki:/mnt/incoming/<category>/<length>/Video.webm
+     ↓ catalogue + transcode (NVENC, 960x540 H.264)
+loki:/mnt/media_transcoded/<category>/<length>/Video.mp4
      ↓ rsync (bwlimit=20MB/s)
-zikzak:/mnt/media/gaming_memes/short/Video.mp4
+zikzak:/mnt/media/<category>/<length>/Video.mp4  +  DB record in mhbn
      ↓ liquidsoap streams from here to icecast2
 ```
 
 **Workflow (YouTube):**
 ```
-loki: yt-dlp download to staging
-     ↓ rsync directly
-zikzak:/mnt/media/gaming_memes/short/Video.mp4
+loki: yt-dlp download to staging (via intake web app)
+     ↓ rsync directly to zikzak
+zikzak:/mnt/media/<category>/<length>/Video.mp4  +  DB record in mhbn
      ↓ liquidsoap streams from here to icecast2
 ```
 
 ## Quick Start: Adding New Videos
 
+Use the **intake web app** at `https://zikzak.nthmost.net/` — paste a YouTube URL or Internet Archive identifier, pick a category and length, and queue it. The app handles download, transcode, push to zikzak, and playlist regeneration automatically.
+
+After adding new content, regenerate playlists on zikzak:
 ```bash
-# On loki.local:
-
-# 1. Download video to incoming directory
-yt-dlp -f 'bestvideo+bestaudio/best' \
-    -o '/mnt/incoming/<category>/<length>/%(title)s.%(ext)s' 'URL'
-
-# 2. Wait for cron (runs every 5 min) or manually run:
-~/bin/process-incoming.sh
-
-# This automatically:
-#   - Catalogues to /mnt/media/
-#   - Transcodes with VAAPI to /mnt/media_transcoded/
-#   - Pushes to zikzak:/mnt/media/
-#   - Regenerates playlists on zikzak
+ssh -J zephyr nthmost@10.100.0.5 "bash /home/nthmost/regenerate-playlists.sh"
 ```
 
 ## Category Structure
 
-Videos are organized by category and length:
+Media lives on zikzak at `/mnt/media/`. All folders use `short/medium/long/` subdirs except prelinger which retains its original topic-based subdirs.
 
 ```
 /mnt/media/
-├── prelinger/              # Prelinger Archive (own subdirs by topic)
-│   ├── 1970s/
-│   ├── automobiles/
-│   └── ...
-├── gaming_memes/
-│   ├── short/              # < 5 min (goes in all-short.m3u)
-│   ├── medium/             # 5-30 min
-│   └── long/               # > 30 min (goes in all-long.m3u)
-├── house_music/
-├── british_surreal_comedy/
-├── surreal_talkshows/
-└── ...
+├── action/          short medium long
+├── anime/           short medium long
+├── cartoons/        short medium long
+├── comedy/          short medium long
+├── commercials/     short medium long   ← injected every 10th clip on ch2/3/4
+├── documentaries/   short medium long
+├── gaming/          short medium long
+├── interstitials/   short medium long   ← injected between every clip on ch2/3/4
+├── music/           short medium long   ← ch1 plays long+medium only
+├── philosophy/      short medium long
+├── prelinger/       1970s/ automobiles/ animation/ atomic/ ...  (804 files, topic subdirs)
+└── tv_shows/        short medium long
 ```
+
+**Category tags** (DB only, no physical folder) track sub-genres and provenance:
+`adult_swim`, `rick_and_morty`, `space_ghost`, `talkshow`, `surreal`, `vintage`, `cyberpunk`, `retro`, `flash`, `homestar_runner`, `gaming` sub-genres, prelinger collection names, etc.
 
 ### Adding New Media
 
@@ -165,30 +158,19 @@ Use the **intake web app** at `http://loki.local:8765/` — paste a YouTube URL 
 
 ### loki.local (Intake + Transcode)
 ```bash
-# Intake web app
-sudo systemctl status intake
-
-# Cron jobs
-crontab -l  # process-incoming.sh (every 5 min), cleanup-transcoded.sh (weekly)
+sudo systemctl status intake                # Intake web app (port 8765)
+sudo systemctl status zikzak-pg-tunnel      # autossh tunnel → zikzak postgres
 ```
 
-### zikzak (Streaming)
+### zikzak (Streaming + DB)
 ```bash
-# Liquidsoap (all 4 channels)
-sudo systemctl status zikzak-liquidsoap
+sudo systemctl status zikzak-liquidsoap    # Liquidsoap 4-channel video
+sudo systemctl status max-hls-ch{1,2,3,4} # HLS segmenters (local display)
+sudo systemctl status icecast2             # Local Icecast
 
-# Local HLS segmenters (feed quadmux display via mpv)
-sudo systemctl status zikzak-hls-ch{1,2,3,4}
-
-# Relay to nthmost.com Icecast
-sudo systemctl status mhbn-relay-ch{1,2,3,4}
-
-sudo systemctl status icecast2
-
-# Liquidsoap telnet interface (127.0.0.1:1234)
-echo -e "ch2.skip\nquit" | nc -q1 127.0.0.1 1234   # skip current ch2 track
-echo -e "request.on_air\nquit" | nc -q1 127.0.0.1 1234  # show playing files
-echo -e "help\nquit" | nc -q1 127.0.0.1 1234  # full command list
+# Liquidsoap telnet (127.0.0.1:1234)
+echo -e "ch2.skip\nquit" | nc -q1 127.0.0.1 1234        # skip current ch2 track
+echo -e "request.on_air\nquit" | nc -q1 127.0.0.1 1234  # show now-playing
 ```
 
 ### zephyr (Public HLS delivery — nthmost.com)
@@ -204,6 +186,6 @@ sudo systemctl status mhbn-hls-ch{1,2,3,4}
 
 | Host | CPU | GPU | Role |
 |------|-----|-----|------|
-| loki.local | i5-14450HX | Intel UHD (VAAPI) | Intake app, IA transcode, YouTube download |
-| zikzak | i7 | GTX 1060 (NVENC) | Streaming server — Liquidsoap + 4-ch encode → Icecast |
+| loki.local | Ryzen 9 5950X | RTX 4080 (NVENC) | Intake app, IA transcode, YouTube download |
+| zikzak | i7 | GTX 1060 (NVENC) | Streaming server — Liquidsoap + 4-ch encode → Icecast, PostgreSQL DB |
 | zephyr | — | — | VPS (nthmost.com) — Icecast relay + HLS segmenters + nginx |

@@ -561,9 +561,11 @@ def _build_loki_yt_cmd(url, category, length, job_id, crop_sides=False):
 
     script = (
         f"set -e && "
+        f"export PATH=$PATH:/home/nthmost/.deno/bin && "
         f"mkdir -p {staging} && "
         f"{LOKI_YT_DLP} -f bestvideo+bestaudio/best --no-playlist "
         f"--restrict-filenames --cookies {LOKI_COOKIES} "
+        f"--remote-components ejs:github "
         f"-o '{staging}/%(title)s.%(ext)s' '{url}'"
         f"{crop_step} && "
         f"ssh -o StrictHostKeyChecking=no -J {ZIKZAK_JUMP} "

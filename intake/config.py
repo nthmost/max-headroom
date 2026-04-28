@@ -1,7 +1,7 @@
 import os
 
 LOG_DIR = "/var/log/transcode/intake"
-DB_PATH = os.path.join(os.path.dirname(__file__), "intake.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 # YouTube downloads run on loki, then rsync directly to zikzak
 LOKI_HOST      = os.environ.get("LOKI_HOST",       "loki")
@@ -22,31 +22,18 @@ PORT = 8765
 API_KEY = os.environ.get("INTAKE_API_KEY", "changeme")
 
 CATEGORIES = [
-    "british_surreal_comedy",
-    "comic_memes",
-    "cyberpunk_anime",
-    "cyberpunk_memes",
-    "darkwave_postpunk",
-    "deep_techno",
-    "fantasy_memes",
-    "gaelic_resistance",
-    "gaming_memes",
-    "house_music",
+    "action",
+    "anime",
+    "cartoons",
+    "comedy",
+    "commercials",
+    "documentaries",
+    "gaming",
     "interstitials",
-    "joke_commercials",
-    "joke_documentaries",
-    "neon_synthpop",
+    "music",
     "philosophy",
-    "philosophy_audio",
     "prelinger",
-    "retro_anime",
-    "retro_flash",
-    "retro_mashups",
-    "retro_sketch_comedy",
-    "scifi_tv",
-    "sketch_comedy",
-    "surreal_talkshows",
-    "vintage_talkshows",
+    "tv_shows",
 ]
 
 LENGTHS = ["short", "medium", "long"]

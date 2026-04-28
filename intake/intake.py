@@ -10,13 +10,13 @@ import re
 import threading
 import time
 
-from flask import Flask, request, jsonify, render_template, abort
+from flask import Flask, request, jsonify, render_template
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
 import downloader
 import analyzer
-from config import CATEGORIES, LENGTHS, PORT, classify_length
+from config import LENGTHS, PORT, classify_length
 
 # BASE_PATH allows the app to run behind a reverse proxy at a sub-path.
 # Set via env var: BASE_PATH=/media
@@ -46,19 +46,14 @@ def worker_loop():
 
 # ─── Routes ─────────────────────────────────────────────────────────────────
 
-def _all_categories():
-    extra = [c for c in db.get_user_categories() if c not in CATEGORIES]
-    return CATEGORIES + extra
-
-
 @app.route("/")
 def index():
-    return render_template("index.html", categories=_all_categories(), lengths=LENGTHS, base_path=BASE_PATH)
+    return render_template("index.html", categories=db.get_all_categories(), lengths=LENGTHS, base_path=BASE_PATH)
 
 
 @app.route("/api/categories")
 def api_categories():
-    return jsonify(_all_categories())
+    return jsonify(db.get_all_categories())
 
 
 @app.route("/api/quickmeta", methods=["POST"])
@@ -143,7 +138,7 @@ def api_submit():
     if not urls:
         return jsonify(error="no urls provided"), 400
 
-    if category not in CATEGORIES:
+    if category not in db.get_all_categories():
         db.add_user_category(category)
 
     job_ids = []
@@ -216,7 +211,7 @@ def api_recent():
 def api_job_log(job_id):
     job = db.get_job(job_id)
     if not job:
-        abort(404)
+        return jsonify(error="job not found"), 404
     log_path = job.get("log_path")
     if not log_path or not os.path.exists(log_path):
         return jsonify(lines=[])
@@ -231,7 +226,7 @@ def api_job_purge(job_id):
     """Cancel if running, delete all pipeline files, remove from DB."""
     job = db.get_job(job_id)
     if not job:
-        abort(404)
+        return jsonify(error="job not found"), 404
     # Cancel first if still in flight
     if job["status"] in ("running", "pending") and job.get("pid"):
         try:
@@ -248,7 +243,7 @@ def api_job_purge(job_id):
 def api_job_cancel(job_id):
     job = db.get_job(job_id)
     if not job:
-        abort(404)
+        return jsonify(error="job not found"), 404
     if job["status"] == "running" and job.get("pid"):
         try:
             os.kill(job["pid"], 15)  # SIGTERM
@@ -281,6 +276,10 @@ def api_media_list():
         return jsonify(error="invalid length"), 400
     try:
         files = downloader.list_zikzak_media(category, length)
+        tags_map = db.get_tags_by_category(category)
+        for f in files:
+            key = (f["category"], f["length"], f["filename"])
+            f["tags"] = tags_map.get(key, [])
         return jsonify(files)
     except Exception as exc:
         return jsonify(error=str(exc)), 500
