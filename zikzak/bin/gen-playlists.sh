@@ -62,7 +62,8 @@ for cat in $MUSIC_CATEGORIES; do
         -iregex ".*\.($VIDEO_EXTS)$" 2>/dev/null >> "$music_long_tmp" || true
 done
 
-python3 "$INTERLEAVE" < "$music_long_tmp" > "$PLAYLIST_DIR/music-long.m3u"
+python3 "$INTERLEAVE" < "$music_long_tmp" > "$PLAYLIST_DIR/music-long.m3u.tmp"
+mv "$PLAYLIST_DIR/music-long.m3u.tmp" "$PLAYLIST_DIR/music-long.m3u"
 echo "  music-long: $(wc -l < "$PLAYLIST_DIR/music-long.m3u") files -> $PLAYLIST_DIR/music-long.m3u"
 
 # short-medium.m3u: short + medium content for ch2/3/4 (programmed channels)
@@ -80,7 +81,8 @@ find_videos -ipath "*/medium/*" \
     ! -ipath "*/joke_commercials/*" \
     >> "$short_medium_tmp"
 
-python3 "$INTERLEAVE" < "$short_medium_tmp" > "$PLAYLIST_DIR/short-medium.m3u"
+python3 "$INTERLEAVE" < "$short_medium_tmp" > "$PLAYLIST_DIR/short-medium.m3u.tmp"
+mv "$PLAYLIST_DIR/short-medium.m3u.tmp" "$PLAYLIST_DIR/short-medium.m3u"
 echo "  short-medium: $(wc -l < "$PLAYLIST_DIR/short-medium.m3u") files -> $PLAYLIST_DIR/short-medium.m3u"
 
 # ── Reference playlists (duration buckets) ─────────────────────────────────────

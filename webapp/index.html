@@ -453,7 +453,7 @@
   var nowPlayingData = {};
 
   function fetchNowPlaying() {
-    fetch('http://nthmost.com:8000/status-json.xsl')
+    fetch('/icecast-status')
       .then(function(r) { return r.json(); })
       .then(function(data) {
         var sources = data.icestats.source;
@@ -462,7 +462,7 @@
           var m = (s.listenurl || '').match(/mhbn-ch(\d+)\.ts$/);
           if (m) {
             var ch = parseInt(m[1]);
-            nowPlayingData[ch] = s.title || s.server_name || '';
+            nowPlayingData[ch] = s.title || '';
           }
         });
         [1, 2].forEach(updateDesc);

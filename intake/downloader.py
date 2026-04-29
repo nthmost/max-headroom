@@ -234,10 +234,13 @@ def list_zikzak_media(category=None, length=None):
     """
     if category and length:
         search_path = f"{ZIKZAK_MEDIA}/{category}/{length}"
+        prefix = f"{category}/{length}"
     elif category:
         search_path = f"{ZIKZAK_MEDIA}/{category}"
+        prefix = category
     else:
         search_path = ZIKZAK_MEDIA
+        prefix = ""
 
     cmd = (
         f"find {shlex.quote(search_path)} -maxdepth 3 -type f "
@@ -252,6 +255,9 @@ def list_zikzak_media(category=None, length=None):
         if len(parts) != 3:
             continue
         size_str, mtime_str, rel = parts
+        # %P is relative to search_path, not ZIKZAK_MEDIA — prepend stripped prefix
+        if prefix:
+            rel = f"{prefix}/{rel}"
         rel_parts = rel.split("/")
         if len(rel_parts) < 3:
             continue

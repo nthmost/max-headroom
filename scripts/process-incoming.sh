@@ -134,7 +134,7 @@ for src in "${INCOMING_FILES[@]}"; do
         VF_FILTER="crop=in_w:in_w*9/16:0:(in_h-in_w*9/16)/2,format=nv12,hwupload,scale_vaapi=${WIDTH}:${HEIGHT}"
         log "  Transcoding to ${WIDTH}x${HEIGHT} H.264 (crop sides)..."
     else
-        VF_FILTER="format=nv12,hwupload,scale_vaapi=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease"
+        VF_FILTER="scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=nv12,hwupload"
         log "  Transcoding to ${WIDTH}x${HEIGHT} H.264..."
     fi
 
