@@ -17,9 +17,8 @@ for dir in "$MEDIA_DIR"/*/; do
     echo "  $category: $count files"
 done
 
-# music-long.m3u — ch1: long-form music + prelinger
+# music-long.m3u — ch1: long-form music only
 find "$MEDIA_DIR/music/long" -type f -name '*.mp4' | sort > "$TEMP_DIR/music-long.m3u"
-find "$MEDIA_DIR/prelinger" -type f -name '*.mp4' | sort >> "$TEMP_DIR/music-long.m3u"
 
 # short-medium.m3u — ch2/3/4: all short+medium content (except music) + prelinger
 > "$TEMP_DIR/short-medium.m3u"
