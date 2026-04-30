@@ -228,51 +228,10 @@ def _check_pipeline(job):
 
 def list_zikzak_media(category=None, length=None):
     """
-    List media files on zikzak under ZIKZAK_MEDIA.
+    List media files from the postgres media_files table.
     Returns list of dicts: {category, length, filename, size, mtime}.
-    Uses GNU find -printf for atomic size+mtime+path in one pass.
     """
-    if category and length:
-        search_path = f"{ZIKZAK_MEDIA}/{category}/{length}"
-        prefix = f"{category}/{length}"
-    elif category:
-        search_path = f"{ZIKZAK_MEDIA}/{category}"
-        prefix = category
-    else:
-        search_path = ZIKZAK_MEDIA
-        prefix = ""
-
-    cmd = (
-        f"find {shlex.quote(search_path)} -maxdepth 3 -type f "
-        r"\( -name '*.mp4' -o -name '*.webm' -o -name '*.mkv' "
-        r"-o -name '*.ogv' -o -name '*.avi' \) "
-        r"-printf '%s\t%T@\t%P\n' 2>/dev/null"
-    )
-    rc, stdout, _ = _ssh_zikzak(cmd, timeout=30)
-    files = []
-    for line in stdout.strip().splitlines():
-        parts = line.split("\t", 2)
-        if len(parts) != 3:
-            continue
-        size_str, mtime_str, rel = parts
-        # %P is relative to search_path, not ZIKZAK_MEDIA — prepend stripped prefix
-        if prefix:
-            rel = f"{prefix}/{rel}"
-        rel_parts = rel.split("/")
-        if len(rel_parts) < 3:
-            continue
-        cat, leng, fname = rel_parts[0], rel_parts[1], "/".join(rel_parts[2:])
-        try:
-            files.append({
-                "category": cat,
-                "length": leng,
-                "filename": fname,
-                "size": int(float(size_str)),
-                "mtime": int(float(mtime_str)),
-            })
-        except (ValueError, TypeError):
-            pass
-    return sorted(files, key=lambda f: f["mtime"], reverse=True)
+    return db.list_media_files(category, length)
 
 
 def probe_zikzak_file(category, length, filename):
@@ -297,19 +256,20 @@ def probe_zikzak_file(category, length, filename):
 
 def delete_media_file(category, length, filename):
     """
-    Delete a single file from zikzak and regenerate playlists.
+    Delete a single file from zikzak, remove from DB, and regenerate playlists.
     Raises RuntimeError on SSH failure.
     """
     path = f"{ZIKZAK_MEDIA}/{category}/{length}/{filename}"
     rc, _, err = _ssh_zikzak(f"rm -f {shlex.quote(path)}")
     if rc != 0:
         raise RuntimeError(err.strip() or "rm failed")
+    db.remove_media_file(category, length, filename)
     _ssh_zikzak("sudo -u max /home/max/bin/regenerate-playlists.sh", timeout=60)
 
 
 def move_media_file(from_cat, from_len, filename, to_cat, to_len):
     """
-    Move a file to a different category/length on zikzak, then regenerate playlists.
+    Move a file to a different category/length on zikzak, update DB, then regenerate playlists.
     Raises RuntimeError on SSH failure.
     """
     src = f"{ZIKZAK_MEDIA}/{from_cat}/{from_len}/{filename}"
@@ -319,6 +279,7 @@ def move_media_file(from_cat, from_len, filename, to_cat, to_len):
     rc, _, err = _ssh_zikzak(cmd)
     if rc != 0:
         raise RuntimeError(err.strip() or "mv failed")
+    db.move_media_file_db(from_cat, from_len, filename, to_cat, to_len)
     _ssh_zikzak("sudo -u max /home/max/bin/regenerate-playlists.sh", timeout=60)
 
 

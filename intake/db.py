@@ -198,3 +198,67 @@ def get_recent(limit=60):
                 ORDER BY updated_at DESC LIMIT %s
             """, (limit,))
             return _rows(cur)
+
+
+# ─── Media file registry ─────────────────────────────────────────────────────
+
+def list_media_files(category=None, length=None):
+    """
+    Query media_files table. Returns list of dicts: {category, length, filename, size, mtime}.
+    'length' maps to the subdir column; 'size' to filesize_bytes; 'mtime' to scanned_at epoch.
+    """
+    base = (
+        "SELECT category, subdir AS length, filename, "
+        "COALESCE(filesize_bytes, 0) AS size, "
+        "EXTRACT(EPOCH FROM scanned_at)::bigint AS mtime "
+        "FROM media_files"
+    )
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if category and length:
+                cur.execute(base + " WHERE category=%s AND subdir=%s ORDER BY scanned_at DESC",
+                            (category, length))
+            elif category:
+                cur.execute(base + " WHERE category=%s ORDER BY scanned_at DESC", (category,))
+            else:
+                cur.execute(base + " ORDER BY scanned_at DESC")
+            return _rows(cur)
+
+
+def upsert_media_file(category, length, filename, filesize_bytes=None,
+                      duration_secs=None, width=None, height=None, bitrate_kbps=None):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO media_files
+                    (category, subdir, filename, filesize_bytes,
+                     duration_secs, width, height, bitrate_kbps, scanned_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (category, subdir, filename) DO UPDATE SET
+                    filesize_bytes = EXCLUDED.filesize_bytes,
+                    duration_secs  = EXCLUDED.duration_secs,
+                    width          = EXCLUDED.width,
+                    height         = EXCLUDED.height,
+                    bitrate_kbps   = EXCLUDED.bitrate_kbps,
+                    scanned_at     = NOW()
+            """, (category, length, filename, filesize_bytes,
+                  duration_secs, width, height, bitrate_kbps))
+
+
+def remove_media_file(category, length, filename):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM media_files WHERE category=%s AND subdir=%s AND filename=%s",
+                (category, length, filename),
+            )
+
+
+def move_media_file_db(category, length, filename, to_category, to_length):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE media_files SET category=%s, subdir=%s "
+                "WHERE category=%s AND subdir=%s AND filename=%s",
+                (to_category, to_length, category, length, filename),
+            )
