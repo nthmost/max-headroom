@@ -20,30 +20,58 @@ tail -50 /home/max/liquidsoap/channels.log
 
 **Symptom:** One or more quadrants of the quad-mux display on zikzak are frozen while other channels (and Icecast) are running fine.
 
-**Diagnosis:** Check the mpv log:
+**Diagnosis — step 1:** Check the liquidsoap log for encoder crashes:
 ```bash
-tail -50 /tmp/mpv-quadmux.log
+sudo grep -E "enc_ch|Error while streaming|reopen" /home/max/liquidsoap/channels.log | tail -20
 ```
 
-Look for either of these patterns:
+**Diagnosis — step 2:** Check the mpv log for stream errors:
+```bash
+grep -E "\[e\]|\[w\]" /tmp/mpv-quadmux.log | tail -20
+```
 
-**Pattern A — stream EOF at track boundary:**
+---
+
+**Pattern A — `random_pick` off-by-one crash (most likely):**
+
+Liquidsoap log shows:
+```
+[enc_ch4:3] Error while streaming: Lang.Runtime_error { kind: "not_found",
+  msg: "no default value for list.nth" ... }, will re-open in 5.00s
+```
+
+**Root cause:** `random.int(max=n)` in liquidsoap is inclusive — it can return `n`, which is out of bounds for a list of length `n`. `list.nth` raises an exception, crashing the encoder process. The `reopen_on_error` handler waits 5 seconds before restarting ffmpeg, during which the Icecast mount returns 404. mpv sees the 404 as a stream EOF and freezes the quadrant.
+
+**Fix (already applied):** `channels.liq` line 45 uses `random.int(max=n-1)`. If this regresses, find and correct it:
+```bash
+grep "random.int" /home/max/liquidsoap/channels.liq
+# Must show: random.int(max=n-1)
+sudo systemctl restart zikzak-liquidsoap
+```
+
+---
+
+**Pattern B — Icecast 404 on reconnect (no crash, just a transient drop):**
+
+mpv log shows:
 ```
 [ffmpeg] http: Stream ends prematurely at XXXXXX, should be 18446744073709551615
+[ffmpeg] http: Will reconnect at XXXXXX in 0 second(s)...
+[ffmpeg] http: HTTP error 404 File Not Found
 [lavf] EOF reached.
 ```
-This happens when Icecast briefly signals HTTP EOF as liquidsoap crosses a track boundary. Without reconnect options, mpv freezes the affected quadrant permanently.
 
-**Fix:** The current `quadmux-display-mpv.sh` includes `--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=30`. The 30-second timeout is intentional — when liquidsoap switches tracks, the ffmpeg process feeding that Icecast mount briefly restarts and returns 404, which can last several seconds. If this option is missing (e.g. after manual edits), add it back. Restart the service:
-```bash
-sudo -u max XDG_RUNTIME_DIR=/run/user/1002 systemctl --user restart quadmux-display
-```
+Without a crash in the liquidsoap log, this is a transient Icecast mount drop (e.g. icecast2 restart, network blip). The `--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=30` in `quadmux-display-mpv.sh` gives mpv 30 seconds to retry before giving up. If the 404 lasts longer than 30 seconds, the quadrant will freeze and the service needs a restart.
 
-**Pattern B — no obvious error, channel just freezes after ~20 minutes:**
+---
 
-Root cause: `--profile=low-latency` was in the mpv command. That profile sets `stream-buffer-size=4k` and `fflags=+nobuffer`, leaving no room to absorb the PTS discontinuity at track boundaries. The lavfi-complex compositor requires all 4 inputs to stay synchronized — one frozen input freezes the whole display.
+**Pattern C — no errors, freezes after ~20 minutes:**
 
-**Fix:** Never use `--profile=low-latency` in `quadmux-display-mpv.sh`. This is a passive display; it does not need low latency. The current script uses 100MiB demuxer buffer and 10s readahead instead.
+Root cause: `--profile=low-latency` in the mpv command sets `stream-buffer-size=4k` and `fflags=+nobuffer`. Any PTS discontinuity hits the lavfi-complex compositor with no buffer to absorb it. Since the compositor requires all 4 inputs synchronized, one stall freezes the whole display.
+
+**Fix:** Never use `--profile=low-latency` in `quadmux-display-mpv.sh`. The current script uses 100MiB demuxer buffer and 10s readahead instead.
+
+---
 
 **If channels are stuck right now**, restart the quadmux service:
 ```bash
