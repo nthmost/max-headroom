@@ -256,7 +256,8 @@ def probe_zikzak_file(category, length, filename):
 
 def delete_media_file(category, length, filename):
     """
-    Delete a single file from zikzak, remove from DB, and regenerate playlists.
+    Delete a single file from zikzak and remove from DB.
+    Liquidsoap uses inotify (reload_mode="watch") so no playlist regen needed.
     Raises RuntimeError on SSH failure.
     """
     path = f"{ZIKZAK_MEDIA}/{category}/{length}/{filename}"
@@ -264,12 +265,12 @@ def delete_media_file(category, length, filename):
     if rc != 0:
         raise RuntimeError(err.strip() or "rm failed")
     db.remove_media_file(category, length, filename)
-    _ssh_zikzak("sudo -u max /home/max/bin/regenerate-playlists.sh", timeout=60)
 
 
 def move_media_file(from_cat, from_len, filename, to_cat, to_len):
     """
-    Move a file to a different category/length on zikzak, update DB, then regenerate playlists.
+    Move a file to a different category/length on zikzak and update DB.
+    Liquidsoap uses inotify (reload_mode="watch") so no playlist regen needed.
     Raises RuntimeError on SSH failure.
     """
     src = f"{ZIKZAK_MEDIA}/{from_cat}/{from_len}/{filename}"
@@ -280,7 +281,6 @@ def move_media_file(from_cat, from_len, filename, to_cat, to_len):
     if rc != 0:
         raise RuntimeError(err.strip() or "mv failed")
     db.move_media_file_db(from_cat, from_len, filename, to_cat, to_len)
-    _ssh_zikzak("sudo -u max /home/max/bin/regenerate-playlists.sh", timeout=60)
 
 
 def pipeline_poller_loop():
