@@ -37,10 +37,12 @@ def resolve_youtube_oembed(url):
     return data.get("title", url), None
 
 
-def _yt_cookies_args():
+def _yt_common_args():
+    """Common yt-dlp args: cookies + JS challenge solver."""
+    args = ["--remote-components", "ejs:github"]
     if YT_COOKIES and os.path.exists(YT_COOKIES):
-        return ["--cookies", YT_COOKIES]
-    return []
+        args += ["--cookies", YT_COOKIES]
+    return args
 
 
 def resolve_youtube_metadata(url):
@@ -49,7 +51,7 @@ def resolve_youtube_metadata(url):
     Raises subprocess.CalledProcessError on failure.
     """
     result = subprocess.run(
-        [YT_DLP, "--no-playlist", "--print", "%(title)s\t%(duration)s", *_yt_cookies_args(), url],
+        [YT_DLP, "--no-playlist", "--print", "%(title)s\t%(duration)s", *_yt_common_args(), url],
         capture_output=True, text=True, timeout=60,
     )
     line = result.stdout.strip().split("\n")[0]
@@ -67,7 +69,7 @@ def expand_youtube_playlist(url):
     Return list of (url, title, duration_seconds) for each video in a playlist.
     """
     result = subprocess.run(
-        [YT_DLP, "--flat-playlist", "--print", "%(webpage_url)s\t%(title)s\t%(duration)s", *_yt_cookies_args(), url],
+        [YT_DLP, "--flat-playlist", "--print", "%(webpage_url)s\t%(title)s\t%(duration)s", *_yt_common_args(), url],
         capture_output=True, text=True, timeout=60,
     )
     entries = []
@@ -113,7 +115,7 @@ def resolve_youtube_rich_metadata(url):
     Raises RuntimeError on failure.
     """
     result = subprocess.run(
-        [YT_DLP, "--no-playlist", "--skip-download", "--dump-json", *_yt_cookies_args(), url],
+        [YT_DLP, "--no-playlist", "--skip-download", "--dump-json", *_yt_common_args(), url],
         capture_output=True, text=True, timeout=60,
     )
     if result.returncode != 0:
@@ -522,7 +524,7 @@ def _build_loki_yt_cmd(url, category, length, job_id, crop_sides=False):
 
     script = (
         f"set -e && "
-        f"export PATH=$PATH:/home/nthmost/.deno/bin && "
+        f"export PATH=$PATH:$HOME/.deno/bin && "
         f"mkdir -p {staging} && "
         f"{LOKI_YT_DLP} -f bestvideo+bestaudio/best --no-playlist "
         f"--restrict-filenames --cookies {LOKI_COOKIES} "
