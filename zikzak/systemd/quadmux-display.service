@@ -4,7 +4,6 @@ After=default.target
 
 [Service]
 Type=simple
-ExecStartPre=/bin/sleep 10
 ExecStart=/home/max/bin/quadmux-display-mpv.sh
 Restart=always
 RestartSec=10

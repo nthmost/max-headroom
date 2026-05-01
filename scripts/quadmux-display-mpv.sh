@@ -47,6 +47,7 @@ mpv \
     --no-terminal \
     --fs \
     --vo=gpu \
+    --hwdec=nvdec-copy \
     --ao=null \
     --video-sync=display-resample \
     --video-aspect-override=16:9 \
