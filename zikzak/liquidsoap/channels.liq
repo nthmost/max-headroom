@@ -42,7 +42,7 @@ commercial_files = ref(process.read.lines(
 def random_pick(files) =
   n = list.length(files)
   if n == 0 then null()
-  else null(list.nth(files, random.int(max=n)))
+  else null(list.nth(files, random.int(max=n-1)))
   end
 end
 
