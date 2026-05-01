@@ -1,4 +1,9 @@
 # Zikzak — 4-channel video stream
+#
+# Media structure: /mnt/media/<category>/<subdir>/
+# Categories: action anime cartoons comedy commercials documentaries
+#             gaming interstitials music philosophy prelinger tv_shows
+# Prelinger uses era/topic subdirs (1940s, 1950s, ...) not short/medium/long.
 
 # Canvas resolution: source files are 960x540, letterboxed to 960x720.
 # Height MUST be 720 (multiple of 16) for correct NVENC stride alignment.
@@ -24,26 +29,22 @@ def encoder_cmd(mount) =
   nvenc_cmd_base ^ "icecast://source:noisebridge@localhost:8000" ^ mount
 end
 
-# ── Playlists ──────────────────────────────────────────────────────────────────
+let media = "/mnt/media"
 
-music_long_playlist   = "/home/max/playlists/music-long.m3u"
-short_medium_playlist = "/home/max/playlists/short-medium.m3u"
+# ── Source helper ──────────────────────────────────────────────────────────────
+# Each call creates an independent playlist reader; safe to call once per channel.
 
-# Interstitial and commercial file lists loaded at startup.
-# Add files to /mnt/media/interstitials/ and /mnt/media/joke_commercials/
-# then restart liquidsoap to pick them up.
-interstitial_files = ref(process.read.lines(
-  "find /mnt/media/interstitials -type f -name '*.mp4' 2>/dev/null"
-))
-commercial_files = ref(process.read.lines(
-  "find /mnt/media/joke_commercials -type f -name '*.mp4' 2>/dev/null"
-))
+def dir_src(d) =
+  playlist(mode="randomize", reload_mode="watch", d)
+end
 
-def random_pick(files) =
-  n = list.length(files)
-  if n == 0 then null()
-  else null(list.nth(files, random.int(max=n-1)))
-  end
+# ── Insert detection ───────────────────────────────────────────────────────────
+# Detect interstitials and commercials by path to suppress now-playing updates.
+
+def is_insert(meta) =
+  f = meta["filename"]
+  string.contains(prefix="#{media}/interstitials", f) or
+  string.contains(prefix="#{media}/commercials", f)
 end
 
 # ── Now-playing metadata → Icecast ─────────────────────────────────────────────
@@ -53,11 +54,10 @@ end
 
 def push_nowplaying(local_mount, relay_mount, meta) =
   filename = meta["filename"]
-  if filename != "" and meta["is_insert"] != "true" then
-    # Build "Title [category]" label from the file path
-    # Path format: /mnt/media/<category>/<length>/<title>.mp4
-    # Uses python3 to transliterate fancy Unicode (Mathematical Bold, Fullwidth,
-    # etc.) down to plain ASCII so Icecast metadata doesn't get garbled.
+  if filename != "" and not is_insert(meta) then
+    # Build "Title [category]" label from the file path.
+    # Path format: /mnt/media/<category>/.../<title>.mp4
+    # Uses python3 to transliterate fancy Unicode down to plain ASCII.
     label = string.trim(
       (process.run(
         "f=" ^ string.quote(filename) ^ "; " ^
@@ -78,54 +78,47 @@ def push_nowplaying(local_mount, relay_mount, meta) =
   end
 end
 
-# ── ch1: Long-form music only, no interruptions ────────────────────────────────
-# Feed: music-long.m3u (DJ sets, live concerts, long mixes)
+# ── ch1: Long-form music, interstitial between every set ──────────────────────
+# rotate strictly alternates: one music track, one interstitial, repeat.
 
 def make_music_channel(id) =
-  s = playlist(id="#{id}", mode="randomize", reload_mode="watch", music_long_playlist)
+  music_long    = dir_src("#{media}/music/long")
+  interstitials = dir_src("#{media}/interstitials")
+  s = rotate([music_long, interstitials])
   s.on_track(fun(meta) -> push_nowplaying("/#{id}.ts", "/mhbn-#{id}.ts", meta))
   mksafe(s)
 end
 
 # ── ch2/3/4: Programmed channels ───────────────────────────────────────────────
-# Feed: short-medium.m3u
-# After every program: interstitial
-# After every 10th program: commercial instead of interstitial
+# Weights: 1 medium-other, 3 short-other, 5 prelinger, 1 interstitial, 1 commercial
+# Total weight 11 → ~9 content tracks per 2 inserts ≈ one break every 4-5 programs.
+# Prelinger gets weight 5 (combined short+medium) using era/topic subdirs.
+#
+# To add a new category: append dir_src entries to short_cats / medium_cats.
 
 def make_programmed_channel(id) =
-  content = playlist(id="#{id}", mode="randomize", reload_mode="watch", short_medium_playlist)
-  inject  = request.queue(id="#{id}_inject")
+  short_cats = random([
+    dir_src("#{media}/anime/short"),
+    dir_src("#{media}/cartoons/short"),
+    dir_src("#{media}/comedy/short"),
+    dir_src("#{media}/documentaries/short"),
+    dir_src("#{media}/gaming/short"),
+    dir_src("#{media}/philosophy/short"),
+    dir_src("#{media}/tv_shows/short"),
+  ])
+  medium_cats = random([
+    dir_src("#{media}/cartoons/medium"),
+    dir_src("#{media}/gaming/medium"),
+    dir_src("#{media}/philosophy/medium"),
+    dir_src("#{media}/tv_shows/medium"),
+  ])
+  prelinger     = dir_src("#{media}/prelinger")
+  interstitials = dir_src("#{media}/interstitials")
+  commercials   = dir_src("#{media}/commercials/short")
 
-  track_count     = ref(0)
-  last_was_insert = ref(false)
-
-  s = fallback(track_sensitive=true, [inject, content])
-
-  s.on_track(fun(meta) ->
-    if not last_was_insert() then
-      # A main content track just started — push metadata and schedule an insert
-      push_nowplaying("/#{id}.ts", "/mhbn-#{id}.ts", meta)
-      last_was_insert := true
-      track_count := track_count() + 1
-      files =
-        if track_count() mod 10 == 0 then commercial_files()
-        else interstitial_files()
-        end
-      pick = random_pick(files)
-      if null.defined(pick) then
-        f = null.get(pick)
-        r = request.create("annotate:is_insert=\"true\":" ^ f)
-        ignore(inject.push(r))
-      else
-        # No insert files available yet — reset so next track tries again
-        last_was_insert := false
-      end
-    else
-      # An insert just started — clear the flag so next track is treated as content
-      last_was_insert := false
-    end
-  )
-
+  s = random(weights=[1, 3, 5, 1, 1],
+    [medium_cats, short_cats, prelinger, interstitials, commercials])
+  s.on_track(fun(meta) -> push_nowplaying("/#{id}.ts", "/mhbn-#{id}.ts", meta))
   mksafe(s)
 end
 
