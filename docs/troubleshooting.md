@@ -110,6 +110,25 @@ grep "frame.video.height" /home/max/liquidsoap/channels.liq
 sudo systemctl restart zikzak-liquidsoap
 ```
 
+### Garbled Now-Playing Text in Webapp (Mojibake)
+
+**Symptom:** The channel description in the `headroom.nthmost.net` viewer shows garbled characters like `ð­ðµðµðµ ð ðð ð¢ð¥ð¬` instead of readable text. May also cause the video grid layout to blow out (one screen stretches to fill the entire viewport, pushing the other off-screen).
+
+**Cause:** YouTube video titles often contain decorative Unicode characters (Mathematical Bold Sans-Serif, Fullwidth, etc. — 4-byte UTF-8 codepoints in the U+1D5xx range). When these are sent to Icecast as metadata, Icecast's ICY protocol defaults to Latin-1 encoding, causing each UTF-8 byte to be reinterpreted as a separate Latin-1 character.
+
+**Fix applied (2026-05-01):**
+
+1. **Liquidsoap metadata sanitization** (`channels.liq`): The `push_nowplaying` function now pipes titles through `python3 -c "unicodedata.normalize('NFKD', ...)"` to transliterate fancy Unicode to plain ASCII before sending to Icecast.
+
+2. **Icecast charset config** (`/etc/icecast2/icecast.xml` on zephyr): Added `<charset>UTF-8</charset>` mount definitions for `/mhbn-ch1.ts` through `/mhbn-ch4.ts` so that any remaining non-ASCII characters (e.g. accented Latin) are handled correctly.
+
+3. **Webapp grid fix** (`webapp/index.html`): Added `min-width: 0; overflow: hidden` to `.channel` grid items so that long/unbreakable metadata text can never blow out the CSS grid columns.
+
+**If it recurs**, the most likely cause is a new source of non-NFKD-decomposable Unicode in filenames. Check the title on the local Icecast:
+```bash
+ssh zikzak "curl -s 'http://admin:noisebridge@localhost:8000/status-json.xsl'" | python3 -m json.tool
+```
+
 ### Transcode Failures
 
 Check logs on loki:

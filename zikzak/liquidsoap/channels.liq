@@ -56,12 +56,20 @@ def push_nowplaying(local_mount, relay_mount, meta) =
   if filename != "" and meta["is_insert"] != "true" then
     # Build "Title [category]" label from the file path
     # Path format: /mnt/media/<category>/<length>/<title>.mp4
+    # Uses python3 to transliterate fancy Unicode (Mathematical Bold, Fullwidth,
+    # etc.) down to plain ASCII so Icecast metadata doesn't get garbled.
     label = string.trim(
       (process.run(
         "f=" ^ string.quote(filename) ^ "; " ^
         "title=$(basename \"$f\" | sed 's/\\.[^.]*$//'); " ^
         "cat=$(echo \"$f\" | cut -d/ -f4); " ^
-        "if [ -n \"$cat\" ]; then echo \"$title [$cat]\"; else echo \"$title\"; fi"
+        "if [ -n \"$cat\" ]; then raw=\"$title [$cat]\"; else raw=\"$title\"; fi; " ^
+        "echo \"$raw\" | python3 -c \"" ^
+        "import sys, unicodedata; " ^
+        "s = sys.stdin.read().strip(); " ^
+        "s = unicodedata.normalize('NFKD', s); " ^
+        "print(''.join(c for c in s if ord(c) < 128))" ^
+        "\""
       )).stdout
     )
     curl_meta = "curl -sf --get --data-urlencode " ^ string.quote("song=" ^ label) ^ " --data mode=updinfo "

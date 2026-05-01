@@ -75,7 +75,7 @@
     padding: 24px 32px;
   }
 
-  .channel { display: flex; flex-direction: column; gap: 10px; }
+  .channel { display: flex; flex-direction: column; gap: 10px; min-width: 0; overflow: hidden; }
 
   .channel-header {
     display: flex;
@@ -120,7 +120,21 @@
   .channel-desc {
     color: var(--amber);
     font-size: 0.8rem;
-    margin-left: auto;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .channel-desc-inner {
+    display: inline-block;
+    white-space: nowrap;
+  }
+  .channel-desc.scrolling .channel-desc-inner {
+    animation: marquee-bounce var(--marquee-dur, 6s) ease-in-out infinite alternate;
+  }
+  @keyframes marquee-bounce {
+    0%, 10%   { transform: translateX(0); }
+    90%, 100% { transform: translateX(var(--marquee-offset, 0px)); }
   }
 
   .crt-screen {
@@ -272,7 +286,7 @@
         <!-- <option value="7">CH 07 - LONG</option> -->
         <!-- <option value="8">CH 08 - SHORT</option> -->
       </select>
-      <span class="channel-desc" id="desc1">PRELINGER TRANSMISSIONS</span>
+      <span class="channel-desc" id="desc1"><span class="channel-desc-inner">PRELINGER TRANSMISSIONS</span></span>
     </div>
     <div class="crt-screen" id="screen1">
       <div class="corner-tl"></div><div class="corner-tr"></div>
@@ -308,7 +322,7 @@
         <!-- <option value="7">CH 07 - LONG</option> -->
         <!-- <option value="8">CH 08 - SHORT</option> -->
       </select>
-      <span class="channel-desc" id="desc2">PRELINGER TRANSMISSIONS</span>
+      <span class="channel-desc" id="desc2"><span class="channel-desc-inner">PRELINGER TRANSMISSIONS</span></span>
     </div>
     <div class="crt-screen" id="screen2">
       <div class="corner-tl"></div><div class="corner-tr"></div>
@@ -474,7 +488,14 @@
     var ch = currentChannels[screenNum];
     var el = document.getElementById('desc' + screenNum);
     var title = nowPlayingData[ch];
-    el.textContent = title ? '▶ ' + title : '';
+    var text = title ? '▶ ' + title : '';
+    var inner = el.querySelector('.channel-desc-inner');
+    if (!inner) {
+      el.innerHTML = '<span class="channel-desc-inner"></span>';
+      inner = el.querySelector('.channel-desc-inner');
+    }
+    inner.textContent = text;
+    applyMarquee(el);
   }
 
   fetchNowPlaying();
@@ -483,6 +504,31 @@
   // Initialize with ch1 and ch2
   attachHLS(1, 1);
   attachHLS(2, 2);
+
+  // Marquee helper — call whenever a channel-desc text changes
+  function applyMarquee(elOrId) {
+    var el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+    if (!el) return;
+    var inner = el.querySelector('.channel-desc-inner');
+    if (!inner) return;
+    el.classList.remove('scrolling');
+    inner.style.removeProperty('--marquee-offset');
+    inner.style.removeProperty('--marquee-dur');
+    requestAnimationFrame(function() {
+      var overflow = inner.scrollWidth - el.clientWidth;
+      if (overflow > 4) {
+        inner.style.setProperty('--marquee-offset', '-' + overflow + 'px');
+        inner.style.setProperty('--marquee-dur', Math.max(3, overflow / 35).toFixed(1) + 's');
+        el.classList.add('scrolling');
+      }
+    });
+  }
+
+  // Seed marquee check after fonts load
+  document.fonts.ready.then(function() {
+    applyMarquee('desc1');
+    applyMarquee('desc2');
+  });
 </script>
 
 </body>
