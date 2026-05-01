@@ -1,6 +1,6 @@
 # System Tuning
 
-## loki.local Performance Tuning
+## loki.nthmost.net Performance Tuning
 
 ### Applied Tunings
 
@@ -48,9 +48,9 @@ sudo systemctl restart loki-perf-tuning
 sudo systemctl disable loki-perf-tuning
 ```
 
-## VAAPI Hardware Encoding (loki.local)
+## VAAPI Hardware Encoding (loki.nthmost.net)
 
-loki.local uses Intel VAAPI for H.264 encoding of IA downloads:
+loki.nthmost.net uses Intel VAAPI for H.264 encoding of IA downloads:
 
 ```bash
 # Check VAAPI support

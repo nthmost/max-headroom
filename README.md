@@ -6,7 +6,7 @@ Multi-channel video streaming system for CRT quad-mux display.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                          loki.local                                  │
+│                          loki.nthmost.net                                  │
 │               Intake Web App · Download · Transcode                  │
 │                                                                     │
 │  YouTube: yt-dlp ──────────────────────────────────────────────┐    │
@@ -43,7 +43,7 @@ Multi-channel video streaming system for CRT quad-mux display.
 
 ## Directory Structure
 
-### loki.local (Intake + Transcode)
+### loki.nthmost.net (Intake + Transcode)
 
 | Directory | Purpose |
 |-----------|---------|
@@ -123,12 +123,12 @@ Media lives on zikzak at `/mnt/media/`. All folders use `short/medium/long/` sub
 
 ### Adding New Media
 
-Use the **intake web app** at `http://loki.local:8765/` — paste a YouTube URL or Internet Archive identifier, pick a category, and queue it. The app handles download, transcode (if needed), push to zikzak, and playlist regeneration automatically.
+Use the **intake web app** at `http://loki.nthmost.net:8765/` — paste a YouTube URL or Internet Archive identifier, pick a category, and queue it. The app handles download, transcode (if needed), push to zikzak, and playlist regeneration automatically.
 
 ### Manual Pipeline (if needed)
 
 ```bash
-# On loki.local:
+# On loki.nthmost.net:
 ~/bin/process-incoming.sh        # Process /mnt/incoming/ now (full pipeline)
 
 # Or individual steps:
@@ -156,7 +156,7 @@ Use the **intake web app** at `http://loki.local:8765/` — paste a YouTube URL 
 
 ## Services
 
-### loki.local (Intake + Transcode)
+### loki.nthmost.net (Intake + Transcode)
 ```bash
 sudo systemctl status intake                # Intake web app (port 8765)
 sudo systemctl status zikzak-pg-tunnel      # autossh tunnel → zikzak postgres
@@ -186,6 +186,6 @@ sudo systemctl status mhbn-hls-ch{1,2,3,4}
 
 | Host | CPU | GPU | Role |
 |------|-----|-----|------|
-| loki.local | Ryzen 9 5950X | RTX 4080 (NVENC) | Intake app, IA transcode, YouTube download |
+| loki.nthmost.net | Ryzen 9 5950X | RTX 4080 (NVENC) | Intake app, IA transcode, YouTube download |
 | zikzak | i7 | GTX 1060 (NVENC) | Streaming server — Liquidsoap + 4-ch encode → Icecast, PostgreSQL DB |
 | zephyr | — | — | VPS (nthmost.com) — Icecast relay + HLS segmenters + nginx |

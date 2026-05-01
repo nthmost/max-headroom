@@ -2,7 +2,7 @@
 
 ## Directory Structure
 
-### The Directories on loki.local
+### The Directories on loki.nthmost.net
 
 ```
 /mnt/media/                      # SOURCE: Original media files
@@ -75,7 +75,7 @@ OUTPUT:  /mnt/media_transcoded/gaming_memes/bg3/short/Frank Reynolds.mp4
 
 ## Adding New Videos
 
-### Step 1: Place Videos on loki.local
+### Step 1: Place Videos on loki.nthmost.net
 
 Add files to `/mnt/media/` following the category/length structure:
 
@@ -149,7 +149,7 @@ This will:
 ## Complete Example: Adding a YouTube Video
 
 ```bash
-# On loki.local:
+# On loki.nthmost.net:
 
 # 1. Download video to incoming directory
 yt-dlp -f 'bestvideo+bestaudio/best' \
@@ -171,7 +171,7 @@ yt-dlp -f 'bestvideo+bestaudio/best' \
 ### Manual workflow (if you need more control):
 
 ```bash
-# On loki.local:
+# On loki.nthmost.net:
 
 # 1. Download to media directly
 cd /mnt/media/gaming_memes/short/

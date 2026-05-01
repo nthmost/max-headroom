@@ -10,14 +10,16 @@ Multi-channel HLS video streaming system for CRT quad-mux display at Noisebridge
 See README.md for architecture and workflow details.
 
 **Hosts:**
-- `loki.local` — intake app, download, transcode (Ryzen 9 5950X + RTX 4080 NVENC)
-  - WireGuard IP: `10.100.0.4` — reachable via `ssh -J zephyr nthmost@10.100.0.4`
-  - Intake UI live at: `https://headroom.nthmost.net/media/`
-- `zikzak` (`10.100.0.5`, jump via `zephyr`) — streaming server; media files, PostgreSQL DB, liquidsoap, Icecast
-- `zephyr` — VPS (nthmost.com); Icecast relay, HLS segmenters, Apache reverse proxy
+- `loki` (`loki.nthmost.net` / `text2gene.org`) — intake app, download, transcode
+  - SSH: `ssh nthmost@text2gene.org` (or `ssh nthmost@loki.nthmost.net`)
+  - Intake app runs as user `max` at `/home/max/intake/`
+  - Intake UI live at: `https://zikzak.nthmost.net/` (nginx on loki terminates SSL, proxies to Flask on port 8765)
+  - Also accessible at: `https://headroom.nthmost.net/media/` (via Apache proxy on zephyr → WireGuard)
+- `zikzak` (`10.100.0.5`, jump via `zephyr`) — streaming server at Noisebridge; media files, PostgreSQL DB, liquidsoap, Icecast
+- `zephyr` — VPS (`nthmost.com` / `149.28.77.210`); Icecast relay, HLS segmenters, Apache reverse proxy
 
-**Note:** `zikzak.nthmost.net` resolves to zephyr but has no dedicated vhost — it
-falls to the default Apache vhost. The real intake proxy is at `headroom.nthmost.net/media/`.
+**Note:** `zikzak.nthmost.net` resolves to loki (not zikzak). The Noisebridge machine
+`zikzak` is only reachable via WireGuard (`ssh -J zephyr max@10.100.0.5`).
 
 ## Server & DNS Information
 
@@ -56,9 +58,9 @@ sudo systemctl status icecast2              # Local Icecast
 # Liquidsoap telnet: nc 127.0.0.1 1234
 ```
 
-**loki.local** (intake):
+**loki** (intake):
 ```bash
-sudo systemctl status intake                # Intake web app (port 8765)
+sudo systemctl status intake                # Intake web app (port 8765, runs as max)
 sudo systemctl status zikzak-pg-tunnel      # autossh tunnel → zikzak:5432 on localhost:5434
 ```
 
@@ -66,7 +68,7 @@ sudo systemctl status zikzak-pg-tunnel      # autossh tunnel → zikzak:5432 on 
 
 PostgreSQL `mhbn` DB lives on **zikzak** at port 5432.
 Loki reaches it via autossh tunnel (`localhost:5434`).
-Connection string in `/home/nthmost/.secrets/mhbn-db.env` on loki.
+Connection string in `/home/max/.secrets/mhbn-db.env` on loki.
 
 Always connect via full URL: `psql 'postgresql://mhbn:PASSWORD@127.0.0.1:5434/mhbn'`
 

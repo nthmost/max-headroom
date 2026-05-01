@@ -6,7 +6,7 @@ Guide for acquiring new content from YouTube and other sources.
 
 ```
 ┌──────────────┐     ┌─────────────────────────┐     ┌─────────────────────┐
-│   YouTube    │────▶│       loki.local        │────▶│    zikzak.local     │
+│   YouTube    │────▶│       loki.nthmost.net        │────▶│    zikzak.local     │
 │   (source)   │     │  /mnt/incoming/<cat>/   │     │    /mnt/media/      │
 └──────────────┘     └─────────────────────────┘     └─────────────────────┘
                               ↓ (cron every 5 min)
@@ -19,12 +19,12 @@ Guide for acquiring new content from YouTube and other sources.
                      └─────────────────────────┘
 ```
 
-**Drop downloads into `/mnt/incoming/<category>/<length>/` on loki.local.**
+**Drop downloads into `/mnt/incoming/<category>/<length>/` on loki.nthmost.net.**
 The pipeline automatically catalogues, transcodes, and deploys to zikzak.
 
 ## Requirements
 
-### yt-dlp Installation (loki.local)
+### yt-dlp Installation (loki.nthmost.net)
 
 The system `yt-dlp` may be outdated. Use the pipx-installed version:
 
@@ -231,13 +231,13 @@ May require cookies:
 
 | Path | Host | Purpose |
 |------|------|---------|
-| `/mnt/incoming/` | loki.local | **Drop downloads here** |
-| `/mnt/media/` | loki.local | Catalogued originals (auto-populated) |
-| `/mnt/media_transcoded/` | loki.local | Transcoded 960x540 H.264 (auto-populated) |
+| `/mnt/incoming/` | loki.nthmost.net | **Drop downloads here** |
+| `/mnt/media/` | loki.nthmost.net | Catalogued originals (auto-populated) |
+| `/mnt/media_transcoded/` | loki.nthmost.net | Transcoded 960x540 H.264 (auto-populated) |
 | `/mnt/media/` | zikzak.local | Deployed transcoded media (permanent) |
-| `~/.local/bin/yt-dlp` | loki.local | yt-dlp binary |
-| `~/bin/process-incoming.sh` | loki.local | Pipeline script (cron every 5 min) |
-| `/var/log/transcode/` | loki.local | Pipeline logs |
+| `~/.local/bin/yt-dlp` | loki.nthmost.net | yt-dlp binary |
+| `~/bin/process-incoming.sh` | loki.nthmost.net | Pipeline script (cron every 5 min) |
+| `/var/log/transcode/` | loki.nthmost.net | Pipeline logs |
 
 ## Pipeline Details
 

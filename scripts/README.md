@@ -2,7 +2,7 @@
 
 These scripts are deployed to `~/bin/` on their respective hosts.
 
-## loki.local Scripts (Transcoding + Intake)
+## loki.nthmost.net Scripts (Transcoding + Intake)
 
 ### process-incoming.sh (Primary - runs via cron)
 Automated pipeline that processes new downloads:
@@ -50,11 +50,11 @@ To deploy updated scripts:
 
 ```bash
 # On loki (transcoding + intake)
-scp scripts/process-incoming.sh loki.local:~/bin/
-scp scripts/transcode-for-quadmux.sh loki.local:~/bin/
-scp scripts/push-to-zikzak.sh loki.local:~/bin/
-scp scripts/cleanup-transcoded.sh loki.local:~/bin/
-ssh loki.local "chmod +x ~/bin/*.sh"
+scp scripts/process-incoming.sh loki.nthmost.net:~/bin/
+scp scripts/transcode-for-quadmux.sh loki.nthmost.net:~/bin/
+scp scripts/push-to-zikzak.sh loki.nthmost.net:~/bin/
+scp scripts/cleanup-transcoded.sh loki.nthmost.net:~/bin/
+ssh loki.nthmost.net "chmod +x ~/bin/*.sh"
 
 # On zikzak (streaming server)
 scp scripts/regenerate-playlists.sh zikzak.local:~/bin/
@@ -63,7 +63,7 @@ ssh zikzak.local "chmod +x ~/bin/*.sh"
 
 ## Cron Setup
 
-### loki.local
+### loki.nthmost.net
 
 ```bash
 # Add to crontab
