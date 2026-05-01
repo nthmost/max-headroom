@@ -34,7 +34,7 @@ Look for either of these patterns:
 ```
 This happens when Icecast briefly signals HTTP EOF as liquidsoap crosses a track boundary. Without reconnect options, mpv freezes the affected quadrant permanently.
 
-**Fix:** The current `quadmux-display-mpv.sh` includes `--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=2`. If this is missing (e.g. after manual edits), add it back. Restart the service:
+**Fix:** The current `quadmux-display-mpv.sh` includes `--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=30`. The 30-second timeout is intentional — when liquidsoap switches tracks, the ffmpeg process feeding that Icecast mount briefly restarts and returns 404, which can last several seconds. If this option is missing (e.g. after manual edits), add it back. Restart the service:
 ```bash
 sudo -u max XDG_RUNTIME_DIR=/run/user/1002 systemctl --user restart quadmux-display
 ```
