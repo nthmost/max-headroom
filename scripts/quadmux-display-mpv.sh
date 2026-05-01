@@ -35,7 +35,7 @@ mpv \
     --vo=gpu \
     --hwdec=nvdec-copy \
     --ao=null \
-    --video-sync=display-resample \
+    --video-sync=desync \
     --video-aspect-override=16:9 \
     --cache=yes \
     --demuxer-max-bytes=100MiB \
