@@ -7,10 +7,12 @@
 #
 # Robustness notes:
 # - reconnect_delay_max=120: survives full liquidsoap restarts (which take 30-60s)
-# - IPC watchdog: kills mpv if it stops responding (frozen display), so systemd
-#   can restart the service cleanly rather than leaving a frozen quadrant up
 # - Do NOT use --profile=low-latency: sets stream-buffer-size=4k which causes
 #   lavfi-complex to freeze at track boundaries (PTS discontinuities)
+# - IPC watchdog removed: at 76% CPU (nvdec-copy), mpv cannot service IPC within
+#   the 3s socat timeout, triggering false "unresponsive" kills on healthy playback.
+#   Liquidsoap is now stable (random() sources, no random_pick crash), so systemd
+#   Restart=always is sufficient recovery without an application-level watchdog.
 
 export DISPLAY=:0
 export XDG_RUNTIME_DIR=/run/user/1002
@@ -26,22 +28,6 @@ for i in {1..120}; do
 done
 
 sleep 3
-
-# IPC watchdog: if mpv stops responding to queries, kill it so systemd restarts cleanly
-ipc_watchdog() {
-    local pid=$1
-    sleep 45  # give mpv time to fully start up and open the IPC socket
-    while kill -0 "$pid" 2>/dev/null; do
-        sleep 20
-        response=$(echo '{"command":["get_property","playback-time"]}' \
-            | socat -t3 - UNIX-CONNECT:/tmp/mpv-quadmux.sock 2>/dev/null)
-        if [ -z "$response" ] && kill -0 "$pid" 2>/dev/null; then
-            echo "$(date): mpv IPC unresponsive, killing for restart"
-            kill "$pid" 2>/dev/null
-            return
-        fi
-    done
-}
 
 mpv \
     --no-terminal \
@@ -63,11 +49,4 @@ mpv \
     --external-file=http://localhost:8000/ch2.ts \
     --external-file=http://localhost:8000/ch3.ts \
     --external-file=http://localhost:8000/ch4.ts \
-    http://localhost:8000/ch1.ts &
-
-MPV_PID=$!
-ipc_watchdog $MPV_PID &
-WATCHDOG_PID=$!
-
-wait $MPV_PID
-kill $WATCHDOG_PID 2>/dev/null
+    http://localhost:8000/ch1.ts
