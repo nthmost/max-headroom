@@ -16,6 +16,47 @@ tail -50 /home/max/liquidsoap/channels.log
 - Invalid playlist paths
 - Missing media files
 
+### Quadmux Channel(s) Frozen / Stuck on One Frame
+
+**Symptom:** One or more quadrants of the quad-mux display on zikzak are frozen while other channels (and Icecast) are running fine.
+
+**Diagnosis:** Check the mpv log:
+```bash
+tail -50 /tmp/mpv-quadmux.log
+```
+
+Look for either of these patterns:
+
+**Pattern A — stream EOF at track boundary:**
+```
+[ffmpeg] http: Stream ends prematurely at XXXXXX, should be 18446744073709551615
+[lavf] EOF reached.
+```
+This happens when Icecast briefly signals HTTP EOF as liquidsoap crosses a track boundary. Without reconnect options, mpv freezes the affected quadrant permanently.
+
+**Fix:** The current `quadmux-display-mpv.sh` includes `--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=2`. If this is missing (e.g. after manual edits), add it back. Restart the service:
+```bash
+sudo -u max XDG_RUNTIME_DIR=/run/user/1002 systemctl --user restart quadmux-display
+```
+
+**Pattern B — no obvious error, channel just freezes after ~20 minutes:**
+
+Root cause: `--profile=low-latency` was in the mpv command. That profile sets `stream-buffer-size=4k` and `fflags=+nobuffer`, leaving no room to absorb the PTS discontinuity at track boundaries. The lavfi-complex compositor requires all 4 inputs to stay synchronized — one frozen input freezes the whole display.
+
+**Fix:** Never use `--profile=low-latency` in `quadmux-display-mpv.sh`. This is a passive display; it does not need low latency. The current script uses 100MiB demuxer buffer and 10s readahead instead.
+
+**If channels are stuck right now**, restart the quadmux service:
+```bash
+sudo -u max XDG_RUNTIME_DIR=/run/user/1002 systemctl --user restart quadmux-display
+# Verify window appears (~15 seconds after restart):
+sudo -u max DISPLAY=:0 wmctrl -l
+```
+
+**Monitoring:** The IPC socket at `/tmp/mpv-quadmux.sock` allows live queries:
+```bash
+echo '{"command": ["get_property", "playback-time"]}' | socat - /tmp/mpv-quadmux.sock
+```
+
 ### Video Stuttering/Dropping
 
 1. Check CPU usage: `htop`
@@ -175,8 +216,13 @@ df -h /mnt/media
 echo "=== Media Files ==="
 find /mnt/media -name "*.mp4" | wc -l
 
+echo "=== Quadmux Display ==="
+sudo -u max XDG_RUNTIME_DIR=/run/user/1002 systemctl --user status quadmux-display --no-pager -n 2
+sudo -u max DISPLAY=:0 wmctrl -l 2>/dev/null | grep -v "xfce\|Desktop" || echo "(no mpv window)"
+
 echo "=== Recent Errors ==="
 tail -20 /home/max/liquidsoap/channels.log | grep -i error
+tail -5 /tmp/mpv-quadmux.log 2>/dev/null | grep -E "\[e\]|\[w\]" || true
 ```
 
 ### Network Stream Test
