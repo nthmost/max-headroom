@@ -7,7 +7,10 @@
 #
 # NOTE: Do NOT use --profile=low-latency here. That sets stream-buffer-size=4k
 # and fflags=+nobuffer, which causes the lavfi-complex compositor to freeze when
-# liquidsoap crosses a track boundary (brief PTS discontinuity). This display
+# liquidsoap crosses a track boundary (brief PTS discontinuity).
+#
+# The stream-lavf-o reconnect options are critical: Icecast briefly signals EOF
+# at track boundaries. Without reconnect, mpv freezes the affected quadrant. This display
 # does not need low latency — it needs stability.
 
 export DISPLAY=:0
@@ -36,6 +39,7 @@ exec mpv \
     --demuxer-readahead-secs=10 \
     --cache-pause=yes \
     --demuxer-lavf-o-add=fflags=+discardcorrupt \
+    --stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=2 \
     --input-ipc-server=/tmp/mpv-quadmux.sock \
     --log-file=/tmp/mpv-quadmux.log \
     --lavfi-complex="[vid1]scale=960:540[v0];[vid2]scale=960:540[v1];[vid3]scale=960:540[v2];[vid4]scale=960:540[v3];[v0][v1]hstack[top];[v2][v3]hstack[bottom];[top][bottom]vstack[vo]" \
