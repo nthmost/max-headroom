@@ -205,23 +205,23 @@ def get_recent(limit=60):
 def list_media_files(category=None, length=None):
     """
     Query media_files table. Returns list of dicts: {category, length, filename, size, mtime}.
-    'length' maps to the subdir column; 'size' to filesize_bytes; 'mtime' to scanned_at epoch.
+    'length' maps to the subdir column; 'size' to filesize_bytes; 'mtime' to ingest_date epoch.
     """
     base = (
         "SELECT category, subdir AS length, filename, "
         "COALESCE(filesize_bytes, 0) AS size, "
-        "EXTRACT(EPOCH FROM scanned_at)::bigint AS mtime "
+        "EXTRACT(EPOCH FROM ingest_date)::bigint AS mtime "
         "FROM media_files"
     )
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             if category and length:
-                cur.execute(base + " WHERE category=%s AND subdir=%s ORDER BY scanned_at DESC",
+                cur.execute(base + " WHERE category=%s AND subdir=%s ORDER BY ingest_date DESC",
                             (category, length))
             elif category:
-                cur.execute(base + " WHERE category=%s ORDER BY scanned_at DESC", (category,))
+                cur.execute(base + " WHERE category=%s ORDER BY ingest_date DESC", (category,))
             else:
-                cur.execute(base + " ORDER BY scanned_at DESC")
+                cur.execute(base + " ORDER BY ingest_date DESC")
             return _rows(cur)
 
 
@@ -232,7 +232,7 @@ def upsert_media_file(category, length, filename, filesize_bytes=None,
             cur.execute("""
                 INSERT INTO media_files
                     (category, subdir, filename, filesize_bytes,
-                     duration_secs, width, height, bitrate_kbps, scanned_at)
+                     duration_secs, width, height, bitrate_kbps, ingest_date)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 ON CONFLICT (category, subdir, filename) DO UPDATE SET
                     filesize_bytes = EXCLUDED.filesize_bytes,
@@ -240,7 +240,7 @@ def upsert_media_file(category, length, filename, filesize_bytes=None,
                     width          = EXCLUDED.width,
                     height         = EXCLUDED.height,
                     bitrate_kbps   = EXCLUDED.bitrate_kbps,
-                    scanned_at     = NOW()
+                    ingest_date    = NOW()
             """, (category, length, filename, filesize_bytes,
                   duration_secs, width, height, bitrate_kbps))
 
