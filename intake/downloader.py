@@ -533,7 +533,7 @@ def _build_loki_yt_cmd(url, category, length, job_id, crop_sides=False):
         f"{crop_step} && "
         f"ssh -o StrictHostKeyChecking=no -J {ZIKZAK_JUMP} "
         f"{ZIKZAK_USER}@{ZIKZAK_HOST} 'mkdir -p {dest}' && "
-        f"rsync -av -e '{ssh_to_zikzak}' "
+        f"rsync -av --no-group -e '{ssh_to_zikzak}' "
         f"{staging}/ {ZIKZAK_USER}@{ZIKZAK_HOST}:{dest}/ && "
         f"rm -rf {staging}"
     )
