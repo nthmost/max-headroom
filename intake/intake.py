@@ -259,7 +259,7 @@ def _valid_cat(c):
     return bool(re.match(r'^[a-z][a-z0-9_]*$', c or ""))
 
 def _valid_len(l):
-    return l in ("short", "medium", "long")
+    return bool(re.match(r'^[a-z][a-z0-9_]*$', l or ""))
 
 def _valid_fname(f):
     import posixpath
