@@ -39,10 +39,13 @@ Cleans up old transcoded files on loki to save disk space.
 ## zikzak.local Scripts (Streaming Server)
 
 ### regenerate-playlists.sh
-Regenerates M3U playlists from actual files on disk.
+Regenerates reference M3U playlists from actual files on disk.
 - Scans `/mnt/media/`
 - Outputs to `/home/max/playlists/`
 - Creates category playlists + all.m3u, all-short.m3u, all-long.m3u
+
+**Note:** liquidsoap does not use these playlists for programming. It watches
+media directories directly. These playlists are for diagnostics and external players.
 
 ## Deployment
 

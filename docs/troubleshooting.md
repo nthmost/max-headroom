@@ -32,22 +32,21 @@ grep -E "\[e\]|\[w\]" /tmp/mpv-quadmux.log | tail -20
 
 ---
 
-**Pattern A — `random_pick` off-by-one crash (most likely):**
+**Pattern A — encoder process crash (check log for specifics):**
 
 Liquidsoap log shows:
 ```
-[enc_ch4:3] Error while streaming: Lang.Runtime_error { kind: "not_found",
-  msg: "no default value for list.nth" ... }, will re-open in 5.00s
+[enc_ch4:3] Error while streaming: ..., will re-open in 5.00s
 ```
 
-**Root cause:** `random.int(max=n)` in liquidsoap is inclusive — it can return `n`, which is out of bounds for a list of length `n`. `list.nth` raises an exception, crashing the encoder process. The `reopen_on_error` handler waits 5 seconds before restarting ffmpeg, during which the Icecast mount returns 404. mpv sees the 404 as a stream EOF and freezes the quadrant.
+The `reopen_on_error` handler restarts the ffmpeg encoder after 5 seconds. During
+that window the Icecast mount returns 404, which mpv sees as a stream EOF and freezes
+the quadrant. The encoder should recover automatically — wait 10 seconds and watch
+whether the quadrant unfreezes. If not, restart liquidsoap.
 
-**Fix (already applied):** `channels.liq` line 45 uses `random.int(max=n-1)`. If this regresses, find and correct it:
-```bash
-grep "random.int" /home/max/liquidsoap/channels.liq
-# Must show: random.int(max=n-1)
-sudo systemctl restart zikzak-liquidsoap
-```
+Note: the old `random_pick` off-by-one crash (`list.nth` exception) is no longer
+possible — `channels.liq` was rewritten in 2026-05 to use liquidsoap's native
+`random()` operator instead of a hand-rolled picker.
 
 ---
 
@@ -61,7 +60,7 @@ mpv log shows:
 [lavf] EOF reached.
 ```
 
-Without a crash in the liquidsoap log, this is a transient Icecast mount drop (e.g. icecast2 restart, network blip). The `--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=30` in `quadmux-display-mpv.sh` gives mpv 30 seconds to retry before giving up. If the 404 lasts longer than 30 seconds, the quadrant will freeze and the service needs a restart.
+Without a crash in the liquidsoap log, this is a transient Icecast mount drop (e.g. icecast2 restart, network blip). The `--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=120` in `quadmux-display-mpv.sh` gives mpv 120 seconds to retry — enough to survive a full liquidsoap restart. If the 404 lasts longer than 120 seconds, the quadrant will freeze and the service needs a restart.
 
 ---
 
@@ -84,6 +83,10 @@ sudo -u max DISPLAY=:0 wmctrl -l
 ```bash
 echo '{"command": ["get_property", "playback-time"]}' | socat - /tmp/mpv-quadmux.sock
 ```
+
+Note: at ~48% CPU (nvdec-copy + lavfi composite), mpv may take several seconds to
+respond to IPC queries under load. This is normal — the socket is for manual
+diagnostics, not automated watchdog use.
 
 ### Video Stuttering/Dropping
 
@@ -191,11 +194,19 @@ ffmpeg -i input.mp4 \
     output.mp4
 ```
 
-### Playlist Out of Sync
+### Playlist Out of Sync (Reference Playlists Only)
 
-Regenerate playlists on zikzak:
+Liquidsoap reads directly from media directories and does not use the M3U
+playlists in `/home/max/playlists/` for programming. New files are picked up
+automatically via inotify watching.
+
+To refresh the reference playlists (for diagnostics, external players, etc.):
 ```bash
 sudo -u max /home/max/bin/regenerate-playlists.sh
+```
+
+To force liquidsoap to re-scan its directory sources (e.g. after bulk moves):
+```bash
 sudo systemctl restart zikzak-liquidsoap
 ```
 

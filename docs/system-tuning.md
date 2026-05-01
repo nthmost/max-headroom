@@ -86,17 +86,19 @@ ffmpeg -encoders | grep nvenc
 ## Resource Usage (zikzak)
 
 ### Expected Normal State
-| Process | CPU |
-|---------|-----|
-| Liquidsoap (zikzak-liquidsoap) | ~30% |
-| FFmpeg × 4 (NVENC encoders) | ~8% each |
-| mpv (quadmux display) | ~70% |
-| **Total** | ~130% |
-| **Load average** | ~1.5–2.0 |
 
-Note: liquidsoap spikes to ~75% for a few minutes after a restart while it probes playlist files. This is normal — wait for it to settle before diagnosing high CPU.
+| Process | CPU | Notes |
+|---------|-----|-------|
+| Liquidsoap (zikzak-liquidsoap) | ~68% | Manages ~44 directory-watched playlist sources simultaneously |
+| FFmpeg × 4 (NVENC encoders) | ~8% each | GPU H.264 encode; CPU is audio mux overhead |
+| mpv (quadmux display) | ~48% | NVDEC-copy decode + software lavfi composite |
+| **Total** | ~148% of 8 threads | ~37% of physical capacity (i7-3770K, 4 cores) |
+| **Load average** | ~1.8–2.2 | |
 
-If liquidsoap remains significantly above 30% after settling, see [Liquidsoap High CPU](troubleshooting.md#liquidsoap-high-cpu-80-100) in the troubleshooting guide.
+Note: on a freshly restarted liquidsoap, CPU spikes further while it scans all
+directory sources and pre-buffers each one. This settles within ~2 minutes.
+zikzak has 8 logical threads (4 cores + HT), so liquidsoap and mpv each running
+at ~50–70% means they are each fully occupying one physical core — normal and sustainable.
 
 ### Services on zikzak
 

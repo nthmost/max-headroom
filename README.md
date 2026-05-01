@@ -56,20 +56,24 @@ Multi-channel video streaming system for CRT quad-mux display.
 | Directory | Purpose |
 |-----------|---------|
 | `/mnt/media/` | **Media files** - 960x540 H.264 (from loki) and YouTube downloads |
-| `/home/max/playlists/` | M3U playlists (auto-generated) |
+| `/home/max/playlists/` | M3U playlists (auto-generated, reference/diagnostics only — not used for programming) |
 | `/home/max/liquidsoap/` | Liquidsoap config + log |
 | `/home/max/bin/` | HLS segmenter scripts (`hls-ch{1-4}.sh`) |
 
-**Channel playlist assignments:**
+**Channel source assignments:**
 
-| Channel | Playlist | Content |
-|---------|----------|---------|
-| ch1 | `music-long.m3u` | Music — long + medium tracks only |
-| ch2 | `short-medium.m3u` | Mixed general content (short + medium) |
-| ch3 | `short-medium.m3u` | Mixed general content (short + medium) |
-| ch4 | `short-medium.m3u` | Mixed general content (short + medium) |
+| Channel | Sources | Content |
+|---------|---------|---------|
+| ch1 | `music/long/` + `interstitials/` | Long-form music; strict rotate: one track then one interstitial |
+| ch2 | Weighted random across all categories | General programming — see [Channel Programming](docs/channel-programming.md) |
+| ch3 | Weighted random across all categories | General programming — see [Channel Programming](docs/channel-programming.md) |
+| ch4 | Weighted random across all categories | General programming — see [Channel Programming](docs/channel-programming.md) |
 
-ch2/3/4 inject an interstitial after every clip and a commercial every 10th clip via liquidsoap request.queue.
+ch2/3/4 use `random(weights=[1, 3, 5, 1, 1])` across [medium-other, short-other,
+prelinger, interstitials, commercials]. Prelinger gets a fixed weight regardless
+of collection size to prevent its ~800 files from crowding out other categories.
+Liquidsoap watches media directories directly (`reload_mode="watch"`) — new files
+appear without a playlist regeneration step.
 
 **Workflow (Internet Archive):**
 ```
@@ -93,9 +97,11 @@ zikzak:/mnt/media/<category>/<length>/Video.mp4  +  DB record in mhbn
 
 Use the **intake web app** at `https://zikzak.nthmost.net/` — paste a YouTube URL or Internet Archive identifier, pick a category and length, and queue it. The app handles download, transcode, push to zikzak, and playlist regeneration automatically.
 
-After adding new content, regenerate playlists on zikzak:
+Liquidsoap picks up new files automatically (directory watching). You do not need
+to regenerate playlists for content to appear on air. To update the reference
+playlists in `/home/max/playlists/` (used for diagnostics, not programming):
 ```bash
-ssh -J zephyr nthmost@10.100.0.5 "bash /home/nthmost/regenerate-playlists.sh"
+ssh -J zephyr max@10.100.0.5 "bash /home/max/bin/regenerate-playlists.sh"
 ```
 
 ## Category Structure
@@ -108,11 +114,11 @@ Media lives on zikzak at `/mnt/media/`. All folders use `short/medium/long/` sub
 ├── anime/           short medium long
 ├── cartoons/        short medium long
 ├── comedy/          short medium long
-├── commercials/     short medium long   ← injected every 10th clip on ch2/3/4
+├── commercials/     short medium long   ← drawn randomly on ch2/3/4 (weight 1 of 11)
 ├── documentaries/   short medium long
 ├── gaming/          short medium long
-├── interstitials/   short medium long   ← injected between every clip on ch2/3/4
-├── music/           short medium long   ← ch1 plays long+medium only
+├── interstitials/   (flat, no length subdir)  ← ch1: after every track; ch2/3/4: weight 1 of 11
+├── music/           short medium long   ← ch1 plays long/ only
 ├── philosophy/      short medium long
 ├── prelinger/       1970s/ automobiles/ animation/ atomic/ ...  (804 files, topic subdirs)
 └── tv_shows/        short medium long
@@ -123,7 +129,7 @@ Media lives on zikzak at `/mnt/media/`. All folders use `short/medium/long/` sub
 
 ### Adding New Media
 
-Use the **intake web app** at `http://loki.nthmost.net:8765/` — paste a YouTube URL or Internet Archive identifier, pick a category, and queue it. The app handles download, transcode (if needed), push to zikzak, and playlist regeneration automatically.
+Use the **intake web app** at `https://zikzak.nthmost.net/` — paste a YouTube URL or Internet Archive identifier, pick a category, and queue it. The app handles download, transcode (if needed), and push to zikzak automatically. Liquidsoap picks up new files without a restart.
 
 ### Manual Pipeline (if needed)
 

@@ -1,15 +1,17 @@
 #!/bin/bash
-# Regenerates playlists from /mnt/media directory structure.
+# Regenerates reference playlists from /mnt/media directory structure.
 #
-# Playlists used by liquidsoap:
-#   music-long.m3u    — long-form music only (ch1, uninterrupted)
-#   short-medium.m3u  — short + medium content, all categories (ch2/3/4)
+# NOTE: liquidsoap does NOT use these playlists for channel programming.
+# channels.liq uses dir_src() with reload_mode="watch" to read media
+# directories directly. New files are picked up automatically by inotify.
 #
-# Reference playlists (not used by liquidsoap directly):
+# These playlists exist for diagnostics, external players, and auditing:
+#   music-long.m3u    — long-form music files (reference)
+#   short-medium.m3u  — short + medium content, all categories (reference)
 #   all-short.m3u, all-long.m3u, all.m3u — duration buckets
 #   <category>.m3u — one per top-level category
 #
-# Run automatically by watch-media.sh on inotify events, or manually.
+# Run manually or via watch-media.sh on inotify events.
 
 set -euo pipefail
 
