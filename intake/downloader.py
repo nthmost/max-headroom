@@ -533,8 +533,9 @@ def _build_loki_yt_cmd(url, category, length, job_id, crop_sides=False):
         f"{crop_step} && "
         f"ssh -o StrictHostKeyChecking=no -J {ZIKZAK_JUMP} "
         f"{ZIKZAK_USER}@{ZIKZAK_HOST} 'mkdir -p {dest}' && "
-        f"rsync -av --no-group -e '{ssh_to_zikzak}' "
-        f"{staging}/ {ZIKZAK_USER}@{ZIKZAK_HOST}:{dest}/ && "
+        f"set +e; rsync -av --no-group -e '{ssh_to_zikzak}' "
+        f"{staging}/ {ZIKZAK_USER}@{ZIKZAK_HOST}:{dest}/; "
+        f"_rc=$?; set -e; [ $_rc -eq 0 ] || [ $_rc -eq 23 ] || exit $_rc && "
         f"rm -rf {staging}"
     )
     return ["ssh", "-o", "StrictHostKeyChecking=no", LOKI_HOST, script]
