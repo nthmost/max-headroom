@@ -11,8 +11,13 @@ See README.md for architecture and workflow details.
 
 **Hosts:**
 - `loki.local` — intake app, download, transcode (Ryzen 9 5950X + RTX 4080 NVENC)
+  - WireGuard IP: `10.100.0.4` — reachable via `ssh -J zephyr nthmost@10.100.0.4`
+  - Intake UI live at: `https://headroom.nthmost.net/media/`
 - `zikzak` (`10.100.0.5`, jump via `zephyr`) — streaming server; media files, PostgreSQL DB, liquidsoap, Icecast
-- `zephyr` — VPS (nthmost.com); Icecast relay, HLS segmenters, nginx
+- `zephyr` — VPS (nthmost.com); Icecast relay, HLS segmenters, Apache reverse proxy
+
+**Note:** `zikzak.nthmost.net` resolves to zephyr but has no dedicated vhost — it
+falls to the default Apache vhost. The real intake proxy is at `headroom.nthmost.net/media/`.
 
 ## Server & DNS Information
 
