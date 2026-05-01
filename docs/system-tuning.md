@@ -106,11 +106,10 @@ at ~50–70% means they are each fully occupying one physical core — normal an
 |---------|---------|-------------------|
 | `zikzak-liquidsoap` | 4-channel video streams → Icecast | Yes |
 | `quadmux-display` (user) | mpv quad-mux to HDMI display | Yes |
+| `ch1-audio` | CH1 audio → 3.5mm jack (ALSA `plughw:0,0`) | Yes |
 | `icecast2` | Local Icecast server | Yes |
 | `zikzak-hls-ch{1-4}` | Local HLS segmenters | Yes |
 | `mhbn-relay-ch{1-4}` | Relay to zephyr/nthmost.com | Yes |
-| `maxheadroom` | **Removed** — old audio-only liquidsoap instance | No (deleted) |
-| `maxheadroom-stream` | Old stream-to-icecast script | No (legacy) |
 
 **Note:** `quadmux-display` is managed exclusively by the systemd user service at `~/.config/systemd/user/quadmux-display.service`. The XFCE autostart entry (`~/.config/autostart/quadmux-display.desktop`) was removed to prevent duplicate instances.
 

@@ -55,6 +55,9 @@ When investigating streaming issues, service health, or system performance, chec
 sudo systemctl status zikzak-liquidsoap     # Liquidsoap 4-channel video
 sudo systemctl status max-hls-ch{1,2,3,4}  # HLS segmenters
 sudo systemctl status icecast2              # Local Icecast
+sudo systemctl status ch1-audio             # CH1 audio → 3.5mm jack (ALSA plughw:0,0)
+# Quadmux display (user service, runs as max):
+sudo -u max XDG_RUNTIME_DIR=/run/user/1002 systemctl --user status quadmux-display
 # Liquidsoap telnet: nc 127.0.0.1 1234
 ```
 

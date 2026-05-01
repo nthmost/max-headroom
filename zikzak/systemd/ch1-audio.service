@@ -1,0 +1,28 @@
+[Unit]
+Description=CH1 audio output to 3.5mm jack
+After=icecast2.service zikzak-liquidsoap.service
+Wants=zikzak-liquidsoap.service
+# Starts after liquidsoap + icecast; the quadmux display is a user service
+# under max and will also be running by this point.
+
+[Service]
+User=nthmost
+Group=audio
+Environment=DISPLAY=
+ExecStartPre=/bin/sleep 15
+ExecStart=/usr/bin/mpv \
+    --no-video \
+    --ao=alsa \
+    --audio-device=alsa/plughw:0,0 \
+    --volume=100 \
+    --stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=30 \
+    --idle=yes \
+    --force-seekable=no \
+    --cache=yes \
+    --demuxer-max-bytes=512KiB \
+    http://localhost:8000/ch1.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -225,6 +225,32 @@ ls -la /var/www/hls/mhbn-ch{1,2,3,4}/
 sudo systemctl status nginx
 ```
 
+### CH1 Audio Output (3.5mm Jack)
+
+The `ch1-audio` systemd service plays CH1 audio through zikzak's analog output
+(HDA Intel PCH, `plughw:0,0`) using mpv in audio-only mode. It connects to the
+local Icecast stream at `http://localhost:8000/ch1.ts`.
+
+**No audio from the 3.5mm jack:**
+```bash
+sudo systemctl status ch1-audio
+# If failed, restart:
+sudo systemctl restart ch1-audio
+```
+
+**Volume adjustment:**
+```bash
+# Check current levels
+amixer -c 0
+# Set master volume (0-100%)
+amixer -c 0 set Master 80%
+# Unmute if muted
+amixer -c 0 set Master unmute
+```
+
+**ALSA device not found:** Ensure the `audio` group has access and the service
+has `Group=audio`. Verify hardware with `sudo aplay -l`.
+
 ### Audio/Video Sync in Browser
 
 The encoded stream normally has ~100-120ms of audio behind video — this is expected and imperceptible. If the browser player shows a larger delay (1-2 seconds):
@@ -277,6 +303,9 @@ find /mnt/media -name "*.mp4" | wc -l
 echo "=== Quadmux Display ==="
 sudo -u max XDG_RUNTIME_DIR=/run/user/1002 systemctl --user status quadmux-display --no-pager -n 2
 sudo -u max DISPLAY=:0 wmctrl -l 2>/dev/null | grep -v "xfce\|Desktop" || echo "(no mpv window)"
+
+echo "=== CH1 Audio Output ==="
+sudo systemctl status ch1-audio --no-pager -n 2
 
 echo "=== Recent Errors ==="
 tail -20 /home/max/liquidsoap/channels.log | grep -i error
