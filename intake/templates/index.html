@@ -242,7 +242,8 @@
   .job-row.done { opacity: 0.6; }
 
   .job-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .job-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; text-decoration: none; }
+  .job-title:hover { text-decoration: underline; }
   .job-badge {
     font-size: 0.75rem; letter-spacing: 0.15em; padding: 1px 5px; border: 1px solid;
     white-space: nowrap; flex-shrink: 0;
@@ -1097,13 +1098,17 @@ function jobRow(job, showCancel, showPurge) {
   }[job.pipeline_status] || '';
 
   const title = job.title || job.url;
+  const sourceLink = job.source === 'ia'
+    ? `https://archive.org/details/${encodeURIComponent(job.url)}`
+    : job.url;
   const meta = `${job.source.toUpperCase()} · ${job.category.replace(/_/g,' ')} · ${job.length}`;
   const error = job.error_msg ? `<div class="job-meta" style="color:var(--red-bright)">${escHtml(job.error_msg)}</div>` : '';
 
   return `
     <div class="job-row ${job.status}" onclick="toggleLog(${job.id})">
       <div class="job-top">
-        <span class="job-title">${escHtml(title)}</span>
+        <a class="job-title" href="${escHtml(sourceLink)}" target="_blank" rel="noopener"
+           onclick="event.stopPropagation()" title="Open source">${escHtml(title)}</a>
         ${statusBadge}
         ${pipelineBadge}
         ${cancelBtn}
