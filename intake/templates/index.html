@@ -216,6 +216,43 @@
   .crop-row input[type=checkbox] { width: auto; accent-color: var(--amber); cursor: pointer; }
   .crop-row label { margin: 0; cursor: pointer; }
 
+  /* ── Tag chips ── */
+  .tag-area { display: flex; flex-direction: column; gap: 6px; }
+  .tag-chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 24px; }
+  .tag-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 0.72rem; padding: 2px 7px 2px 8px;
+    border: 1px solid var(--green-dim); color: var(--green);
+    background: #001a0d; letter-spacing: 0.1em; white-space: nowrap;
+  }
+  .tag-chip .tag-x {
+    cursor: pointer; font-size: 0.85rem; line-height: 1;
+    color: var(--green-dim); padding: 0 1px;
+  }
+  .tag-chip .tag-x:hover { color: var(--red-bright); }
+  .tag-input-row { display: flex; gap: 4px; position: relative; }
+  .tag-input-row input[type=text] {
+    flex: 1; padding: 5px 8px; font-size: 0.85rem;
+  }
+  .tag-add-btn {
+    padding: 5px 10px; border: 1px solid var(--amber-dim);
+    background: transparent; color: var(--amber-dim); cursor: pointer;
+    font-family: inherit; font-size: 0.8rem; letter-spacing: 0.15em;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .tag-add-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .tag-ac-list {
+    display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 300;
+    background: #0d0d00; border: 1px solid var(--amber-dim);
+    max-height: 160px; overflow-y: auto;
+  }
+  .tag-ac-list.open { display: block; }
+  .tag-ac-item {
+    padding: 5px 10px; font-size: 0.82rem; color: var(--amber);
+    cursor: pointer; letter-spacing: 0.08em;
+  }
+  .tag-ac-item:hover, .tag-ac-item.selected { background: var(--amber-faint); }
+
   /* ── Right panel: queue ── */
   .panel-queue {
     padding: 20px 24px;
@@ -678,6 +715,18 @@
         <button class="len-btn" onclick="setModalLength('long')">LONG &gt;30m</button>
       </div>
     </div>
+    <div>
+      <label>TAGS</label>
+      <div class="tag-area">
+        <div class="tag-chips" id="modal-tag-chips"></div>
+        <div class="tag-input-row">
+          <input type="text" id="modal-tag-input" placeholder="add tag..." autocomplete="off"
+            oninput="tagAcUpdate()" onkeydown="tagInputKey(event)">
+          <button class="tag-add-btn" onclick="addCustomTag()">+ ADD TAG</button>
+          <div class="tag-ac-list" id="tag-ac-list"></div>
+        </div>
+      </div>
+    </div>
     <div id="modal-new-category">
       <div>⚡ AI SUGGESTS NEW CATEGORY: <span class="new-cat-name" id="modal-new-cat-name"></span></div>
       <div class="new-cat-actions">
@@ -705,6 +754,102 @@ let currentLength = 'auto';
 let expandedLogIds = new Set();
 let logIntervals = {};
 let modalSource = '', modalUrl = '', modalLength = 'medium';
+
+// ── Tag management ───────────────────────────────────────────────────────────
+
+let _modalTags = [];      // active tag slugs for the current modal session
+let _allTags = [];        // loaded from /api/tags for autocomplete
+let _acSelectedIdx = -1;  // keyboard nav index in autocomplete
+
+async function loadAllTags() {
+  try {
+    const res = await fetch(url('/api/tags'), { headers: headers() });
+    _allTags = await res.json();
+  } catch {}
+}
+loadAllTags();
+
+function renderTagChips() {
+  const container = document.getElementById('modal-tag-chips');
+  container.innerHTML = _modalTags.map(t =>
+    `<span class="tag-chip">${escHtml(t.replace(/_/g,' '))}` +
+    `<span class="tag-x" onclick="removeTag('${escHtml(t)}')">✕</span></span>`
+  ).join('');
+}
+
+function addTag(slug) {
+  slug = slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  if (!slug || _modalTags.includes(slug)) return;
+  _modalTags.push(slug);
+  renderTagChips();
+}
+
+function removeTag(slug) {
+  _modalTags = _modalTags.filter(t => t !== slug);
+  renderTagChips();
+}
+
+function addCustomTag() {
+  const inp = document.getElementById('modal-tag-input');
+  const val = inp.value.trim();
+  if (!val) return;
+  addTag(val);
+  inp.value = '';
+  closeTagAc();
+}
+
+function tagInputKey(e) {
+  const list = document.getElementById('tag-ac-list');
+  const items = list.querySelectorAll('.tag-ac-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _acSelectedIdx = Math.min(_acSelectedIdx + 1, items.length - 1);
+    items.forEach((el, i) => el.classList.toggle('selected', i === _acSelectedIdx));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _acSelectedIdx = Math.max(_acSelectedIdx - 1, 0);
+    items.forEach((el, i) => el.classList.toggle('selected', i === _acSelectedIdx));
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (_acSelectedIdx >= 0 && items[_acSelectedIdx]) {
+      addTag(items[_acSelectedIdx].dataset.slug);
+      document.getElementById('modal-tag-input').value = '';
+      closeTagAc();
+    } else {
+      addCustomTag();
+    }
+  } else if (e.key === 'Escape') {
+    closeTagAc();
+  }
+}
+
+function tagAcUpdate() {
+  const q = document.getElementById('modal-tag-input').value.trim().toLowerCase();
+  const list = document.getElementById('tag-ac-list');
+  _acSelectedIdx = -1;
+  if (!q) { closeTagAc(); return; }
+  const matches = _allTags.filter(t => t.includes(q) && !_modalTags.includes(t)).slice(0, 12);
+  if (!matches.length) { closeTagAc(); return; }
+  list.innerHTML = matches.map(t =>
+    `<div class="tag-ac-item" data-slug="${escHtml(t)}" onmousedown="acPick('${escHtml(t)}')">${escHtml(t.replace(/_/g,' '))}</div>`
+  ).join('');
+  list.classList.add('open');
+}
+
+function acPick(slug) {
+  addTag(slug);
+  document.getElementById('modal-tag-input').value = '';
+  closeTagAc();
+}
+
+function closeTagAc() {
+  document.getElementById('tag-ac-list').classList.remove('open');
+  _acSelectedIdx = -1;
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.tag-input-row')) closeTagAc();
+});
 
 function setSource(s) {
   currentSource = s;
@@ -821,12 +966,17 @@ function openModal(title, durationSeconds, length) {
   document.getElementById('modal-new-cat-row').style.display = 'none';
   document.getElementById('modal-new-cat-confirm').style.display = 'none';
   document.getElementById('modal-error').style.display = 'none';
+  // Reset tags
+  _modalTags = [];
+  document.getElementById('modal-tag-input').value = '';
+  closeTagAc();
+  renderTagChips();
   document.getElementById('modal-overlay').classList.add('open');
 }
 
 let _pendingNewCategory = '';
 
-function fillModalAI(category, isNew, length, reasoning, durationSeconds, isSquare) {
+function fillModalAI(category, isNew, length, reasoning, durationSeconds, isSquare, suggestedTags) {
   if (length && length !== 'unknown') setModalLength(length);
   if (durationSeconds) document.getElementById('modal-duration').textContent = formatDuration(durationSeconds);
   if (isSquare) {
@@ -852,6 +1002,12 @@ function fillModalAI(category, isNew, length, reasoning, durationSeconds, isSqua
 
   const r = document.getElementById('modal-reasoning');
   if (reasoning) { r.textContent = reasoning; r.style.display = 'block'; }
+
+  // Populate AI-suggested tags (don't clobber any the user already added)
+  if (suggestedTags && suggestedTags.length) {
+    suggestedTags.forEach(t => { if (!_modalTags.includes(t)) _modalTags.push(t); });
+    renderTagChips();
+  }
 }
 
 function acceptNewCategory() {
@@ -900,11 +1056,13 @@ async function queueFromModal() {
       length: modalLength,
       crop_sides: document.getElementById('modal-crop-sides').checked,
       playlist: false,
+      tags: _modalTags.slice(),
     };
     const res = await fetch(url('/api/submit'), { method: 'POST', headers: headers(), body: JSON.stringify(body) });
     const data = await res.json();
     if (!res.ok) { modalError('ERROR: ' + (data.error || res.status)); return; }
     addCategoryToSelect('category', cat);  // sync new category to main form
+    loadAllTags();  // refresh autocomplete with any newly created tags
     closeModal();
     document.getElementById('url-input').value = '';
     msg(`QUEUED ${data.queued} JOB${data.queued !== 1 ? 'S' : ''}`, 'ok');
@@ -954,7 +1112,7 @@ async function analyzeUrl() {
         return;
       }
       const len = (data.length && data.length !== 'unknown') ? data.length : modalLength;
-      fillModalAI(data.category, data.is_new_category, len, data.reasoning, data.duration_seconds, data.is_square);
+      fillModalAI(data.category, data.is_new_category, len, data.reasoning, data.duration_seconds, data.is_square, data.suggested_tags);
     }).catch(() => {
       const s = document.getElementById('modal-ai-status');
       if (s) { s.textContent = 'AI unavailable'; s.className = ''; }

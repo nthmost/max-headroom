@@ -48,6 +48,28 @@ def get_all_categories():
             return [r["name"] for r in cur.fetchall()]
 
 
+def get_all_tags():
+    """Return all tag names from the categories table, ordered by name."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT name FROM categories ORDER BY name ASC")
+            return [r["name"] for r in cur.fetchall()]
+
+
+def ensure_tags_exist(tag_names):
+    """Insert any tags that don't yet exist in the categories table."""
+    if not tag_names:
+        return
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for tag in tag_names:
+                cur.execute(
+                    "INSERT INTO categories (name, is_builtin, is_tag_only) "
+                    "VALUES (%s, FALSE, TRUE) ON CONFLICT DO NOTHING",
+                    (tag,),
+                )
+
+
 def set_filename(job_id, filename):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -63,14 +85,14 @@ def delete_job(job_id):
             cur.execute("DELETE FROM jobs WHERE id = %s", (job_id,))
 
 
-def insert_job(url, title, source, category, length, crop_sides=False):
+def insert_job(url, title, source, category, length, crop_sides=False, tags=None):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO jobs (url, title, source, category, length, status, crop_sides)
-                   VALUES (%s, %s, %s, %s, %s, 'pending', %s)
+                """INSERT INTO jobs (url, title, source, category, length, status, crop_sides, tags)
+                   VALUES (%s, %s, %s, %s, %s, 'pending', %s, %s)
                    RETURNING id""",
-                (url, title, source, category, length, bool(crop_sides)),
+                (url, title, source, category, length, bool(crop_sides), tags or []),
             )
             return cur.fetchone()[0]
 

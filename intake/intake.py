@@ -56,6 +56,11 @@ def api_categories():
     return jsonify(db.get_all_categories())
 
 
+@app.route("/api/tags")
+def api_tags():
+    return jsonify(db.get_all_tags())
+
+
 @app.route("/api/quickmeta", methods=["POST"])
 def api_quickmeta():
     """Fast endpoint: returns title + duration using cheap yt-dlp --print call."""
@@ -101,7 +106,8 @@ def api_analyze():
                 return jsonify(error=f"not a valid IA identifier: {raw_url}"), 400
             metadata = downloader.resolve_ia_rich_metadata(identifier)
 
-        result = analyzer.classify(metadata)
+        existing_tags = db.get_all_tags()
+        result = analyzer.classify(metadata, existing_tags=existing_tags)
         w = metadata.get("width")
         h = metadata.get("height")
         is_square = bool(w and h and 0.8 <= w / h <= 1.25)
@@ -113,6 +119,7 @@ def api_analyze():
             length=result["length"],
             reasoning=result["reasoning"],
             is_square=is_square,
+            suggested_tags=result.get("suggested_tags", []),
         )
     except Exception as exc:
         return jsonify(error=str(exc)), 500
@@ -128,6 +135,7 @@ def api_submit():
     length = data.get("length", "auto")  # 'auto', 'short', 'medium', 'long'
     is_playlist = data.get("playlist", False)
     crop_sides = bool(data.get("crop_sides", False))
+    tags = [t for t in (data.get("tags") or []) if re.match(r'^[a-z][a-z0-9_]*$', t)]
 
     if source not in ("youtube", "ia", "playlist_file"):
         return jsonify(error="source must be youtube, ia, or playlist_file"), 400
@@ -140,6 +148,8 @@ def api_submit():
 
     if category not in db.get_all_categories():
         db.add_user_category(category)
+    if tags:
+        db.ensure_tags_exist(tags)
 
     job_ids = []
 
@@ -155,7 +165,7 @@ def api_submit():
                     return jsonify(error=f"could not expand playlist: {url}"), 400
                 for video_url, title, duration in entries:
                     resolved_length = length if length != "auto" else classify_length(duration)
-                    jid = db.insert_job(video_url, title, "youtube", category, resolved_length, crop_sides)
+                    jid = db.insert_job(video_url, title, "youtube", category, resolved_length, crop_sides, tags)
                     job_ids.append(jid)
             else:
                 if length == "auto":
@@ -169,7 +179,7 @@ def api_submit():
                 else:
                     title, _ = downloader.resolve_youtube_metadata(url)
                     resolved_length = length
-                jid = db.insert_job(url, title, "youtube", category, resolved_length, crop_sides)
+                jid = db.insert_job(url, title, "youtube", category, resolved_length, crop_sides, tags)
                 job_ids.append(jid)
 
         elif source == "ia":
@@ -178,7 +188,7 @@ def api_submit():
                 return jsonify(error=f"not a valid IA identifier or URL: {url}"), 400
             title, duration = downloader.resolve_ia_metadata(identifier)
             resolved_length = length if length != "auto" else classify_length(duration)
-            jid = db.insert_job(identifier, title, "ia", category, resolved_length, crop_sides)
+            jid = db.insert_job(identifier, title, "ia", category, resolved_length, crop_sides, tags)
             job_ids.append(jid)
 
         elif source == "playlist_file":
@@ -191,7 +201,7 @@ def api_submit():
                     title, resolved_length = url, "medium"
             else:
                 title, resolved_length = url, length
-            jid = db.insert_job(url, title, "youtube", category, resolved_length, crop_sides)
+            jid = db.insert_job(url, title, "youtube", category, resolved_length, crop_sides, tags)
             job_ids.append(jid)
 
     return jsonify(job_ids=job_ids, queued=len(job_ids))
