@@ -280,12 +280,18 @@ def _valid_fname(f):
 def api_media_list():
     category = request.args.get("category") or None
     length   = request.args.get("length")   or None
+    try:
+        limit = int(request.args.get("limit") or 0)
+    except ValueError:
+        limit = 0
     if category and not _valid_cat(category):
         return jsonify(error="invalid category"), 400
     if length and not _valid_len(length):
         return jsonify(error="invalid length"), 400
     try:
         files = downloader.list_zikzak_media(category, length)
+        if limit > 0:
+            files = files[:limit]
         tags_map = db.get_tags_by_category(category)
         for f in files:
             key = (f["category"], f["length"], f["filename"])
