@@ -9,17 +9,25 @@ Full bash/zsh access is granted in this project. No additional permission prompt
 Multi-channel HLS video streaming system for CRT quad-mux display at Noisebridge.
 See README.md for architecture and workflow details.
 
-**Hosts:**
+**Hosts:** (see `docs/hardware-manifest.md` for full specs, roles, and network paths)
 - `loki` (`loki.nthmost.net` / `text2gene.org`) — intake app, download, transcode
   - SSH: `ssh nthmost@text2gene.org` (or `ssh nthmost@loki.nthmost.net`)
+  - Hardware: Ryzen 9 5950X, 64GB RAM, RTX 4080 (NVENC), home Sonic fiber
   - Intake app runs as user `max` at `/home/max/intake/`
   - Intake UI live at: `https://zikzak.nthmost.net/` (nginx on loki terminates SSL, proxies to Flask on port 8765)
   - Also accessible at: `https://headroom.nthmost.net/media/` (via Apache proxy on zephyr → WireGuard)
-- `zikzak` (`10.100.0.5`, jump via `zephyr`) — streaming server at Noisebridge; media files, PostgreSQL DB, liquidsoap, Icecast
+- `zikzak` (`10.100.0.5`, jump via `zephyr`) — streaming server at Noisebridge; media files, liquidsoap, Icecast
+  - Hardware: i7-3770K, 16GB RAM, GTX 1080 (NVENC/NVDEC)
+  - **Playback only** — do not run transcoding or heavy tasks here
+- `headroom` (`10.100.0.4` / `headroom.local`) — spare resource at Noisebridge
+  - Hardware: i5-14450HX, 32GB RAM, Intel UHD iGPU (VAAPI)
+  - Same LAN as zikzak (<1ms). Use for batch processing that would be wasteful to route through loki.
 - `zephyr` — VPS (`nthmost.com` / `149.28.77.210`); Icecast relay, HLS segmenters, Apache reverse proxy
+  - **Network bridge only** — 2 vCPU, 4GB RAM, no GPU
 
 **Note:** `zikzak.nthmost.net` resolves to loki (not zikzak). The Noisebridge machine
-`zikzak` is only reachable via WireGuard (`ssh -J zephyr max@10.100.0.5`).
+`zikzak` is only reachable via WireGuard (`ssh -J zephyr nthmost@10.100.0.5`) or
+`zikzak.local` from the Noisebridge LAN.
 
 ## Server & DNS Information
 
@@ -64,16 +72,17 @@ sudo -u max XDG_RUNTIME_DIR=/run/user/1002 systemctl --user status quadmux-displ
 **loki** (intake):
 ```bash
 sudo systemctl status intake                # Intake web app (port 8765, runs as max)
-sudo systemctl status zikzak-pg-tunnel      # autossh tunnel → zikzak:5432 on localhost:5434
+sudo systemctl status loki-pg-to-zikzak    # reverse autossh tunnel → exposes loki:5432 as zikzak:127.0.0.1:5435
 ```
 
 ## Database
 
-PostgreSQL `mhbn` DB lives on **zikzak** at port 5432.
-Loki reaches it via autossh tunnel (`localhost:5434`).
-Connection string in `/home/max/.secrets/mhbn-db.env` on loki.
+PostgreSQL `mhbn` DB lives on **loki** at port 5432. This is the source of truth.
 
-Always connect via full URL: `psql 'postgresql://mhbn:PASSWORD@127.0.0.1:5434/mhbn'`
+- Loki connects directly: `postgresql://mhbn:PASSWORD@127.0.0.1:5432/mhbn`
+- Zikzak connects via reverse tunnel on port 5435: `postgresql://mhbn:PASSWORD@127.0.0.1:5435/mhbn`
+- Connection string in `/home/max/.secrets/mhbn-db.env` on each host (different port)
+- Schema changes: run on **loki** as postgres superuser — `sudo -u postgres psql mhbn`
 
 ## Key Scripts
 
