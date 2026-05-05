@@ -667,7 +667,7 @@
             <th onclick="mmSort('filename')">FILENAME</th>
             <th onclick="mmSort('category')">CATEGORY</th>
             <th onclick="mmSort('length')">LEN</th>
-            <th>TAGS</th>
+            <th onclick="mmSort('tags')">TAGS</th>
             <th onclick="mmSort('size')">SIZE</th>
             <th onclick="mmSort('mtime')">DATE</th>
           </tr>
@@ -1464,7 +1464,12 @@ function renderMediaTable() {
 
   const key = _mmSortKey;
   rows.sort((a, b) => {
-    const av = a[key], bv = b[key];
+    let av = a[key], bv = b[key];
+    // tags is an array — sort by first tag alphabetically, empty last
+    if (key === 'tags') {
+      av = (av && av.length) ? av[0] : '￿';
+      bv = (bv && bv.length) ? bv[0] : '￿';
+    }
     const cmp = typeof av === 'string' ? av.localeCompare(bv) : (av - bv);
     return _mmSortAsc ? cmp : -cmp;
   });
@@ -1473,7 +1478,7 @@ function renderMediaTable() {
   document.querySelectorAll('table.mm-table thead th').forEach(th => {
     th.classList.remove('sort-asc', 'sort-desc');
   });
-  const cols = ['filename','category','length','size','mtime'];
+  const cols = ['filename','category','length','tags','size','mtime'];
   const idx  = cols.indexOf(key);
   if (idx >= 0) {
     const ths = document.querySelectorAll('table.mm-table thead th');
