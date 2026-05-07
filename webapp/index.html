@@ -390,10 +390,18 @@
     }
 
     if (Hls.isSupported()) {
-      var hls = new Hls({ 
-        liveSyncDurationCount: 3, 
-        liveMaxLatencyDurationCount: 5,
-        enableWorker: true
+      var hls = new Hls({
+        // Live sync: stay ~2 segments (4.8s) behind live edge instead of 3 (7.2s)
+        liveSyncDurationCount: 2,
+        liveMaxLatencyDurationCount: 4,
+        enableWorker: true,
+        // Audio sync: limit how far audio can drift from video before correction
+        maxAudioFramesDrift: 1,
+        // Nudge playback position if A/V gets out of sync
+        nudgeOffset: 0.1,
+        nudgeMaxRetry: 5,
+        // Tolerate small buffer holes at segment boundaries
+        maxBufferHole: 0.5,
       });
       hls.loadSource(src);
       hls.attachMedia(v);

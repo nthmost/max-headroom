@@ -20,10 +20,14 @@ log.file.path.set("/home/max/liquidsoap/channels.log")
 
 # NVENC: canvas is already 960x720, no scale filter needed
 let nvenc_cmd_base =
+  "-r 25 " ^                                      # Explicit constant 25fps output
   "-vf \"format=yuv420p\" " ^
   "-c:v h264_nvenc -preset p4 -profile:v high " ^
-  "-b:v 1400k -maxrate 1400k -bufsize 2800k -g 60 " ^
-  "-c:a aac -b:a 128k -ac 2 -ar 44100 -f mpegts "
+  "-b:v 1400k -maxrate 1400k -bufsize 2800k -g 50 " ^  # 50 frames = 2s GOP at 25fps (matches HLS target)
+  "-c:a aac -b:a 128k -ac 2 -ar 44100 " ^
+  "-af \"aresample=async=1000\" " ^               # Audio resample: correct up to 1000 samples/sec of drift
+  "-max_muxing_queue_size 1024 " ^                # Prevent muxing queue overflows
+  "-f mpegts "
 
 def encoder_cmd(mount) =
   nvenc_cmd_base ^ "icecast://source:noisebridge@localhost:8000" ^ mount
