@@ -251,13 +251,140 @@ amixer -c 0 set Master unmute
 **ALSA device not found:** Ensure the `audio` group has access and the service
 has `Group=audio`. Verify hardware with `sudo aplay -l`.
 
-### Audio/Video Sync in Browser
+### Audio/Video Sync in Browser (1-2 Second Audio Delay)
 
-The encoded stream normally has ~100-120ms of audio behind video — this is expected and imperceptible. If the browser player shows a larger delay (1-2 seconds):
+**Investigated and fixed: 2026-05-07.** Root causes, analysis method, and applied fixes documented below.
 
-1. **Try reloading the page** — hls.js can latch onto a bad sync offset at startup
-2. **Check for the known TARGETDURATION spec violation** — see [issue #1](https://github.com/nthmost/max-headroom/issues/1). HLS playlists declare `TARGETDURATION:2` but segments are 2.4s (GOP 60 @ 25fps). Safari's native HLS may behave differently than hls.js.
-3. **Check relay and segmenter health** — a relay restart can cause a PTS discontinuity that confuses some players
+#### Normal baseline
+
+The encoded MPEG-TS stream has ~100-120ms of audio PTS ahead of video PTS per
+HLS segment. This is expected and imperceptible — it comes from H.264 B-frame
+reordering: NVENC outputs B-frames with PTS values that are slightly higher than
+the first decodable frame, so each segment starts with a small audio pre-roll.
+
+```bash
+# Measure A/V offset in a live HLS segment on zephyr (should be 80-130ms):
+seg=$(ls -t /var/www/hls/mhbn-ch1/*.ts | head -2 | tail -1)
+ffprobe -v quiet -print_format json -show_packets -read_intervals '%+#20' $seg \
+  | python3 -c "
+import json,sys; d=json.load(sys.stdin)
+v=[p for p in d['packets'] if p['codec_type']=='video']
+a=[p for p in d['packets'] if p['codec_type']=='audio']
+diff = float(v[0].get('pts_time',0)) - float(a[0].get('pts_time',0))
+print(f'A/V offset: {diff*1000:.1f}ms (audio leads video; normal if 80-130ms)')
+"
+```
+
+#### What was causing the 1-2 second delay
+
+Three compounding issues were found and fixed (commit `c7bb122`):
+
+**1. GOP size mismatch (primary cause)**
+
+The NVENC encoder used `-g 60` (60 frames = **2.4s** GOP at 25fps), but the HLS
+segmenter targets `-hls_time 2`. The segmenter must cut at keyframe boundaries,
+so every segment was exactly 2.4s. However, the playlist declared:
+
+```
+#EXT-X-TARGETDURATION:2
+#EXTINF:2.400000,
+```
+
+This violates the intent of the HLS spec (EXTINF should be ≤ TARGETDURATION
+when rounded, which passes numerically but is 20% longer than declared). Some
+hls.js live-sync calculations use TARGETDURATION × liveSyncDurationCount to
+estimate the live edge; a 20% mismatch means the player's estimated latency
+is 20% wrong, and its catchup/nudge logic fires incorrectly.
+
+**Fix:** Changed `-g 60` → `-g 50` (50 frames = exactly **2.0s** GOP at 25fps).
+Segments now report `2.000000` and match `TARGETDURATION:2` exactly.
+
+**2. aresample correction rate too low (secondary cause)**
+
+The ffmpeg encoding chain included `-af "aresample=async=1"`. The `async`
+parameter is in **samples per second** of correction capacity — `async=1` means
+correcting 1/44100 second ≈ 0.023ms/sec of drift. In practice this does nothing.
+
+The actual measured audio/video clock drift is ~1.55ms per 2-second segment
+(~0.78ms/sec), driven by the non-integer ratio between audio frames (1024
+samples @ 44100Hz = 23.22ms each) and video frames (40ms each). `async=1`
+could never catch up to this drift.
+
+**Fix:** Changed to `aresample=async=1000`, which corrects up to 22.7ms/sec —
+well above the measured drift rate. After the fix, the A/V offset oscillates in
+a ±10ms band around the B-frame baseline rather than slowly accumulating.
+
+**3. hls.js live sync settings too aggressive (browser-side)**
+
+The webapp configured `liveSyncDurationCount: 3` (stay 3 segments = 7.2s behind
+the live edge). With the TARGETDURATION mismatch above, this window was wider
+than intended, giving audio and video SourceBuffers more time to diverge. No
+`nudge` or `maxBufferHole` settings were configured, so the player had no
+self-correction mechanism.
+
+**Fix:** Updated `webapp/index.html` hls.js config:
+```js
+liveSyncDurationCount: 2,       // 4s behind live edge (was 7.2s)
+liveMaxLatencyDurationCount: 4,
+maxAudioFramesDrift: 1,         // correct audio drift after 1-frame deviation
+nudgeOffset: 0.1,               // seek 100ms forward to resync when drifting
+nudgeMaxRetry: 5,
+maxBufferHole: 0.5,             // tolerate small gaps at segment boundaries
+```
+
+#### Diagnostic workflow
+
+If the delay reappears, work through these steps in order:
+
+```bash
+# 1. Confirm segment durations are 2.0s (not 2.4s)
+cat /var/www/hls/mhbn-ch1/index.m3u8 | grep EXTINF
+# Should show: #EXTINF:2.000000,
+
+# 2. Confirm GOP size in running ffmpeg
+ps aux | grep ffmpeg | grep -v grep | grep -o '\-g [0-9]*'
+# Should show: -g 50
+
+# 3. Confirm aresample correction rate
+ps aux | grep ffmpeg | grep -v grep | grep -o 'aresample=[^ ]*'
+# Should show: aresample=async=1000
+
+# 4. Measure live A/V offset (repeat across 4+ segments to check for drift)
+for seg in $(ls -t /var/www/hls/mhbn-ch1/*.ts | head -6 | tac); do
+  ffprobe -v quiet -print_format json -show_packets -read_intervals '%+#10' $seg \
+    | python3 -c "
+import json,sys; d=json.load(sys.stdin)
+v=[p for p in d['packets'] if p['codec_type']=='video']
+a=[p for p in d['packets'] if p['codec_type']=='audio']
+print(f'{\"$(basename $seg)\"}: {(float(v[0].get(\"pts_time\",0))-float(a[0].get(\"pts_time\",0)))*1000:.1f}ms')
+" 2>/dev/null
+done
+# Healthy: values in 80-130ms range, varying by <20ms between segments
+# Sick:    values steadily increasing segment-to-segment (drift not corrected)
+```
+
+If the offset is steadily increasing, check that Liquidsoap was restarted after
+the `channels.liq` change — verify the running ffmpeg process has `-g 50` and
+`aresample=async=1000` as above.
+
+If segments are 2.4s again, Liquidsoap config was reverted or the live file on
+zikzak was overwritten. Re-deploy `zikzak/liquidsoap/channels.liq` from the
+repo and restart:
+
+```bash
+# From this repo:
+scp zikzak/liquidsoap/channels.liq zephyr:/tmp/channels.liq
+ssh zephyr "scp /tmp/channels.liq nthmost@10.100.0.5:/tmp/ && \
+  ssh nthmost@10.100.0.5 'sudo cp /tmp/channels.liq /home/max/liquidsoap/channels.liq && \
+  sudo chown max:max /home/max/liquidsoap/channels.liq && \
+  sudo systemctl restart zikzak-liquidsoap'"
+```
+
+**If all the above checks out and the delay persists**, try reloading the browser
+page — hls.js occasionally latches onto a bad A/V offset at startup that a
+reload clears. If the delay is consistent across reloads but only happens at
+track transitions (not mid-video), see the "Liquidsoap clock drift at transitions"
+note in `docs/system-tuning.md`.
 
 ### Skip a Track / Check What's Playing
 
