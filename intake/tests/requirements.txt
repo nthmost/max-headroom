@@ -1,0 +1,2 @@
+# Test-only deps — runtime deps live in intake/requirements.txt
+pytest>=8.0
