@@ -17,10 +17,12 @@ all:
           ansible_host: 10.100.0.5
           ansible_user: nthmost
           ansible_ssh_common_args: '-J zephyr'
+          wg_client_address: 10.100.0.5
           # Service user for liquidsoap, playlists, etc.
           service_user: max
           service_group: max
-          # GPU: GTX 1080 (NVENC/NVDEC)
+          # GPU: GTX 1080 + GTX 1060 (NVENC/NVDEC). Secure Boot requires
+          # MOK enrollment after first nvidia-dkms install (see bootstrap docs).
           gpu_type: nvidia
           media_path: /mnt/media
           liquidsoap_config_path: /home/max/liquidsoap
@@ -30,8 +32,10 @@ all:
     intake:
       hosts:
         loki:
-          ansible_host: text2gene.org
+          ansible_host: 10.100.0.6
+          ansible_ssh_common_args: '-J zephyr'
           ansible_user: nthmost
+          wg_client_address: 10.100.0.6
           # Service user for intake app
           service_user: max
           service_group: max
@@ -74,14 +78,16 @@ all:
     icecast_admin_password: "{{ vault_icecast_admin_password }}"
     icecast_relay_password: "{{ vault_icecast_relay_password }}"
     
-    # Database (lives on loki, tunneled to zikzak)
+    # Database — canonical mhbn lives on loki (postgres 16, local port 5432).
+    # zikzak reaches it via loki-pg-tunnel.service (autossh forward tunnel:
+    # zikzak:127.0.0.1:5435 → loki:127.0.0.1:5432).
     db_name: mhbn
     db_user: mhbn
     db_password: "{{ vault_db_password }}"
     db_host_loki: 127.0.0.1
     db_port_loki: 5432
     db_host_zikzak: 127.0.0.1
-    db_port_zikzak: 5435  # via reverse tunnel
+    db_port_zikzak: 5435  # via loki-pg-tunnel on zikzak
     
     # Video encoding defaults
     video_width: 960

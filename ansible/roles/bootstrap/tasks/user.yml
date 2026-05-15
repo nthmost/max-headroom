@@ -16,13 +16,20 @@
     create_home: yes
   become: yes
 
-- name: Ensure media root exists
+- name: Add admin user to service group (lets ops rsync land as service-group)
+  ansible.builtin.user:
+    name: "{{ bootstrap_admin_user }}"
+    groups: "{{ bootstrap_service_group }}"
+    append: yes
+  become: yes
+
+- name: Ensure media root exists with setgid so files inherit service group
   ansible.builtin.file:
     path: "{{ bootstrap_media_root }}"
     state: directory
     owner: "{{ bootstrap_service_user }}"
     group: "{{ bootstrap_service_group }}"
-    mode: '0755'
+    mode: '2775'
   become: yes
 
 - name: Ensure category dirs (with length subdirs)
@@ -31,7 +38,7 @@
     state: directory
     owner: "{{ bootstrap_service_user }}"
     group: "{{ bootstrap_service_group }}"
-    mode: '0755'
+    mode: '2775'
   loop: "{{ bootstrap_media_categories | product(bootstrap_media_lengths) | list }}"
   become: yes
   when: item.0 not in ['interstitials', 'prelinger']
@@ -42,7 +49,7 @@
     state: directory
     owner: "{{ bootstrap_service_user }}"
     group: "{{ bootstrap_service_group }}"
-    mode: '0755'
+    mode: '2775'
   loop:
     - interstitials
     - prelinger

@@ -18,9 +18,12 @@
   roles:
     - role: liquidsoap
       tags: [liquidsoap, streaming]
-    
+
     - role: icecast-relay
       tags: [relay, streaming]
+
+    - role: dropbox-watchdog
+      tags: [dropbox-watchdog, intake]
 
   post_tasks:
     - name: Verify liquidsoap is running

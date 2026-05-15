@@ -1,0 +1,17 @@
+---
+# WireGuard client role (zikzak, loki, headroom etc joining zephyr's mesh).
+# Manages /etc/wireguard/wg0.conf with an IP-literal endpoint so wg-quick@wg0
+# doesn't race DNS resolution at boot (zephyr's hostname won't resolve before
+# the network is fully up; we learned this twice).
+#
+# Public-key enrollment on zephyr's side is NOT automated — after first run,
+# read /etc/wireguard/publickey on the new host and add it to zephyr's
+# wg0.conf manually.
+
+wg_address: "{{ wg_client_address }}"
+wg_hub_pubkey: "R89gpw9/6u1xUIYbdzhidaDDtTAKK7gS5Qch5uifwls="
+wg_hub_endpoint_ip: "149.28.77.210"
+wg_hub_endpoint_port: 51820
+wg_allowed_ips: "10.100.0.0/24"
+wg_keepalive: 25
+wg_listen_port: 51820

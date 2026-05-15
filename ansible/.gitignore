@@ -1,0 +1,13 @@
+# Ansible vault password file
+.vault_password
+vault_password
+
+# Encrypted vault (keep vault.yml.example, ignore actual vault)
+# Uncomment this after encrypting vault.yml:
+# group_vars/vault.yml
+
+# Retry files
+*.retry
+
+# Local inventory overrides
+inventory.local.yml

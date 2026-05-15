@@ -1,0 +1,84 @@
+---
+- name: Ensure psycopg2 + ffprobe are available
+  ansible.builtin.apt:
+    name:
+      - python3-psycopg2
+      - ffmpeg
+    state: present
+  become: yes
+
+- name: Ensure dropbox dir exists (service writes here from intake push)
+  ansible.builtin.file:
+    path: "{{ dw_dropbox_dir }}"
+    state: directory
+    owner: "{{ dw_service_user }}"
+    group: "{{ dw_service_group }}"
+    mode: '2775'
+  become: yes
+
+- name: Ensure dropbox rejected subdir exists
+  ansible.builtin.file:
+    path: "{{ dw_dropbox_dir }}/rejected"
+    state: directory
+    owner: "{{ dw_service_user }}"
+    group: "{{ dw_service_group }}"
+    mode: '2775'
+  become: yes
+
+- name: Ensure service-user bin dir exists
+  ansible.builtin.file:
+    path: "{{ dw_bin_dir }}"
+    state: directory
+    owner: "{{ dw_service_user }}"
+    group: "{{ dw_service_group }}"
+    mode: '0755'
+  become: yes
+
+- name: Ensure service-user secrets dir exists
+  ansible.builtin.file:
+    path: "{{ dw_secrets_dir }}"
+    state: directory
+    owner: "{{ dw_service_user }}"
+    group: "{{ dw_service_group }}"
+    mode: '0700'
+  become: yes
+
+- name: Deploy dropbox-watchdog.py
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../zikzak/bin/dropbox-watchdog.py"
+    dest: "{{ dw_bin_dir }}/dropbox-watchdog.py"
+    owner: "{{ dw_service_user }}"
+    group: "{{ dw_service_group }}"
+    mode: '0755'
+  become: yes
+  notify: Restart dropbox-watchdog
+
+- name: Deploy mhbn-db env file (DATABASE_URL for the watchdog)
+  ansible.builtin.template:
+    src: mhbn-db.env.j2
+    dest: "{{ dw_secrets_dir }}/mhbn-db.env"
+    owner: "{{ dw_service_user }}"
+    group: "{{ dw_service_group }}"
+    mode: '0600'
+  become: yes
+  notify: Restart dropbox-watchdog
+
+- name: Deploy systemd unit
+  ansible.builtin.template:
+    src: dropbox-watchdog.service.j2
+    dest: /etc/systemd/system/dropbox-watchdog.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify:
+    - Reload systemd
+    - Restart dropbox-watchdog
+
+- name: Enable and start dropbox-watchdog
+  ansible.builtin.systemd:
+    name: dropbox-watchdog
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: yes

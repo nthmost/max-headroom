@@ -1,0 +1,11 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  become: yes
+
+- name: Restart dropbox-watchdog
+  ansible.builtin.systemd:
+    name: dropbox-watchdog
+    state: restarted
+  become: yes

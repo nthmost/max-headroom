@@ -1,0 +1,20 @@
+---
+# dropbox-watchdog: validates incoming media in /mnt/dropbox/ and files it
+# into /mnt/media/<category>/<length>/, updating mhbn via the loki-pg-tunnel.
+
+dw_service_user: "{{ service_user | default('max') }}"
+dw_service_group: "{{ service_group | default('max') }}"
+dw_dropbox_dir: /mnt/dropbox
+dw_media_dir: "{{ media_path | default('/mnt/media') }}"
+dw_poll_interval: 5
+
+# DB connection — uses the loki-pg-tunnel on zikzak (localhost:5435 → loki:5432)
+dw_db_host: "{{ db_host_zikzak | default('127.0.0.1') }}"
+dw_db_port: "{{ db_port_zikzak | default(5435) }}"
+dw_db_name: "{{ db_name | default('mhbn') }}"
+dw_db_user: "{{ db_user | default('mhbn') }}"
+dw_db_password: "{{ db_password }}"
+
+# Paths on target
+dw_bin_dir: "/home/{{ dw_service_user }}/bin"
+dw_secrets_dir: "/home/{{ dw_service_user }}/.secrets"

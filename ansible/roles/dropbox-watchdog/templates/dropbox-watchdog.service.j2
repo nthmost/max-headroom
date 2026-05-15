@@ -1,0 +1,19 @@
+[Unit]
+Description=Dropbox watchdog — validates and files incoming media
+After=network-online.target loki-pg-tunnel.service
+Wants=loki-pg-tunnel.service
+
+[Service]
+Type=simple
+User={{ dw_service_user }}
+Group={{ dw_service_group }}
+ExecStart=/usr/bin/python3 {{ dw_bin_dir }}/dropbox-watchdog.py
+Restart=always
+RestartSec=10
+EnvironmentFile={{ dw_secrets_dir }}/mhbn-db.env
+Environment=DROPBOX_DIR={{ dw_dropbox_dir }}
+Environment=MEDIA_DIR={{ dw_media_dir }}
+Environment=POLL_INTERVAL={{ dw_poll_interval }}
+
+[Install]
+WantedBy=multi-user.target

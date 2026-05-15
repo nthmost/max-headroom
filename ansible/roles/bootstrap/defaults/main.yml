@@ -33,6 +33,9 @@ bootstrap_service_user_groups:
   - render
   - audio
 
+# Admin user added to service group so rsync/ops as nthmost lands in shared dirs
+bootstrap_admin_user: "{{ ansible_user | default('nthmost') }}"
+
 # Media directory layout (matches README category structure)
 bootstrap_media_root: "{{ media_path | default('/mnt/media') }}"
 bootstrap_media_categories:
