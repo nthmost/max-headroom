@@ -1,0 +1,19 @@
+[Unit]
+Description=SSH tunnel from zikzak to loki PostgreSQL (mhbn)
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target wg-quick@wg0.service
+
+[Service]
+User={{ lpt_service_user }}
+ExecStart=/usr/bin/autossh -M 0 -N \
+    -o ServerAliveInterval={{ lpt_serveralive_interval }} \
+    -o ServerAliveCountMax={{ lpt_serveralive_count_max }} \
+    -o ExitOnForwardFailure=yes \
+    -L {{ lpt_local_port }}:127.0.0.1:{{ lpt_remote_port }} \
+    -J {{ lpt_jump_user }}@{{ lpt_jump_host }} \
+    {{ lpt_jump_user }}@{{ lpt_remote_host }}
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

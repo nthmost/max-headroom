@@ -1,0 +1,19 @@
+---
+# loki-pg-tunnel: autossh forward tunnel from zikzak to loki so services on
+# zikzak can talk to mhbn at localhost:5435 instead of routing every query
+# over WG. Required for the dropbox-watchdog and any future zikzak-side code
+# that reads from mhbn.
+#
+# Prerequisite: the OS user running the tunnel must have an SSH key that's
+# authorized on both zephyr (for the ProxyJump) and loki (for the actual
+# session). For zikzak's nthmost user this was set up by hand on first
+# bring-up; see docs/zikzak-architecture.md.
+
+lpt_service_user: "{{ ansible_user | default('nthmost') }}"
+lpt_local_port: "{{ db_port_zikzak | default(5435) }}"
+lpt_remote_host: 10.100.0.6        # loki via WG
+lpt_remote_port: "{{ db_port_loki | default(5432) }}"
+lpt_jump_host: "{{ wg_hub_endpoint_ip | default('149.28.77.210') }}"
+lpt_jump_user: nthmost
+lpt_serveralive_interval: 30
+lpt_serveralive_count_max: 3

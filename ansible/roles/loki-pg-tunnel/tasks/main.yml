@@ -1,0 +1,50 @@
+---
+- name: Ensure autossh is installed
+  ansible.builtin.apt:
+    name: autossh
+    state: present
+  become: yes
+
+- name: Sanity check — service user has an SSH private key
+  ansible.builtin.stat:
+    path: "/home/{{ lpt_service_user }}/.ssh/id_ed25519"
+  register: lpt_key
+  become: yes
+
+- name: Fail early if SSH key is missing
+  ansible.builtin.fail:
+    msg: >-
+      No SSH key at /home/{{ lpt_service_user }}/.ssh/id_ed25519. The tunnel
+      can't authenticate to loki without it. Generate one with
+      `ssh-keygen -t ed25519` as {{ lpt_service_user }} and authorize the
+      pubkey on zephyr + loki, then re-run.
+  when: not lpt_key.stat.exists
+
+- name: Deploy loki-pg-tunnel systemd unit
+  ansible.builtin.template:
+    src: loki-pg-tunnel.service.j2
+    dest: /etc/systemd/system/loki-pg-tunnel.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify:
+    - Reload systemd
+    - Restart loki-pg-tunnel
+
+- name: Enable and start loki-pg-tunnel
+  ansible.builtin.systemd:
+    name: loki-pg-tunnel
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: yes
+
+- name: Verify the tunnel can reach mhbn
+  ansible.builtin.shell: |
+    PGPASSWORD={{ db_password }} psql -h 127.0.0.1 -p {{ lpt_local_port }} \
+      -U {{ db_user }} -d {{ db_name }} -tAc 'SELECT 1' 2>&1
+  register: lpt_smoke
+  changed_when: false
+  failed_when: lpt_smoke.rc != 0 or lpt_smoke.stdout | trim != '1'
+  tags: [verify]

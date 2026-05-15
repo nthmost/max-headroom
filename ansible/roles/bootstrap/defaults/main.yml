@@ -60,10 +60,14 @@ bootstrap_media_lengths:
 bootstrap_install_nvidia: "{{ gpu_type | default('none') == 'nvidia' }}"
 
 # Postgres / mhbn DB
-bootstrap_install_postgres: true
+#
+# Default OFF: zikzak does NOT host postgres anymore. The canonical mhbn
+# lives on loki (post f483244) and zikzak reaches it via loki-pg-tunnel.
+# Enable explicitly per-host if you ever bring up a fresh DB host.
+bootstrap_install_postgres: false
 bootstrap_db_name: "{{ db_name | default('mhbn') }}"
 bootstrap_db_user: "{{ db_user | default('mhbn') }}"
-bootstrap_db_password: "{{ vault_db_password }}"
+bootstrap_db_password: "{{ vault_db_password | default('') }}"
 
 # Icecast2 server (zikzak only — separate from icecast-relay role)
 bootstrap_install_icecast2: true

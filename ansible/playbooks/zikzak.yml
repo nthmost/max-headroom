@@ -22,6 +22,9 @@
     - role: icecast-relay
       tags: [relay, streaming]
 
+    - role: loki-pg-tunnel
+      tags: [loki-pg-tunnel, db]
+
     - role: dropbox-watchdog
       tags: [dropbox-watchdog, intake]
 

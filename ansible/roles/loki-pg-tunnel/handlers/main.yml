@@ -1,0 +1,11 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  become: yes
+
+- name: Restart loki-pg-tunnel
+  ansible.builtin.systemd:
+    name: loki-pg-tunnel
+    state: restarted
+  become: yes
