@@ -5,7 +5,9 @@ Accepts YouTube URLs, Internet Archive identifiers, and playlist files.
 Queues downloads into /mnt/incoming/ for the existing cron pipeline.
 """
 
+import logging
 import os
+import posixpath
 import re
 import threading
 import time
@@ -17,6 +19,8 @@ import db
 import downloader
 import analyzer
 from config import LENGTHS, PORT, classify_length
+
+log = logging.getLogger(__name__)
 
 # BASE_PATH allows the app to run behind a reverse proxy at a sub-path.
 # Set via env var: BASE_PATH=/media
@@ -173,6 +177,7 @@ def api_submit():
                         title, duration = downloader.resolve_youtube_metadata(url)
                         resolved_length = classify_length(duration)
                     except Exception:
+                        log.exception("yt metadata lookup failed for %s", url)
                         return jsonify(
                             error="could not fetch video metadata; pick a length manually"
                         ), 400
@@ -198,6 +203,8 @@ def api_submit():
                     title, duration = downloader.resolve_youtube_metadata(url)
                     resolved_length = classify_length(duration)
                 except Exception:
+                    # Best-effort: bulk playlist imports keep going on per-row failure.
+                    log.warning("yt metadata lookup failed for %s; defaulting to medium", url)
                     title, resolved_length = url, "medium"
             else:
                 title, resolved_length = url, length
@@ -272,7 +279,6 @@ def _valid_len(l):
     return bool(re.match(r'^[a-z][a-z0-9_]*$', l or ""))
 
 def _valid_fname(f):
-    import posixpath
     return bool(f) and f == posixpath.basename(f) and ".." not in f
 
 

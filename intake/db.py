@@ -1,31 +1,47 @@
+"""
+Postgres data access layer for mhbn. All public functions return plain dicts
+or lists of dicts so callers don't depend on psycopg2 types.
+"""
+
 import os
+from typing import Any, Optional
+
 import psycopg2
 import psycopg2.extras
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
+# A `jobs` row keyed by column name. Schema lives in migrate_to_pg.py / DDL.
+Job = dict[str, Any]
+# A `media_files` row as exposed by list_media_files (subdir renamed to length).
+MediaRow = dict[str, Any]
+# Map of (category, subdir, filename) -> [tag, ...].
+TagMap = dict[tuple[str, str, str], list[str]]
 
-def get_conn():
-    conn = psycopg2.connect(DATABASE_URL)
-    return conn
+
+def get_conn() -> psycopg2.extensions.connection:
+    """Return a fresh psycopg2 connection. Callers must use as a context manager."""
+    return psycopg2.connect(DATABASE_URL)
 
 
-def _row(cur):
+def _row(cur: psycopg2.extensions.cursor) -> Optional[Job]:
     """Return one row as a dict, or None."""
     row = cur.fetchone()
     return dict(row) if row else None
 
 
-def _rows(cur):
+def _rows(cur: psycopg2.extensions.cursor) -> list[Job]:
+    """Return all rows as a list of dicts."""
     return [dict(r) for r in cur.fetchall()]
 
 
-def init_db():
+def init_db() -> None:
     """No-op: schema is managed via migrate_to_pg.py / manual DDL on zikzak."""
     pass
 
 
-def add_user_category(name):
+def add_user_category(name: str) -> None:
+    """Add a user-defined (non-builtin) category. Idempotent."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -34,21 +50,23 @@ def add_user_category(name):
             )
 
 
-def get_user_categories():
+def get_user_categories() -> list[str]:
+    """Return the names of user-defined categories, alphabetically."""
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT name FROM categories WHERE is_builtin = FALSE ORDER BY name ASC")
             return [r["name"] for r in cur.fetchall()]
 
 
-def get_all_categories():
+def get_all_categories() -> list[str]:
+    """Return names of all real categories (excludes tag-only entries)."""
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT name FROM categories WHERE is_tag_only = FALSE ORDER BY name ASC")
             return [r["name"] for r in cur.fetchall()]
 
 
-def get_all_tags():
+def get_all_tags() -> list[str]:
     """Return all tag names from the categories table, ordered by name."""
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -56,7 +74,7 @@ def get_all_tags():
             return [r["name"] for r in cur.fetchall()]
 
 
-def ensure_tags_exist(tag_names):
+def ensure_tags_exist(tag_names: list[str]) -> None:
     """Insert any tags that don't yet exist in the categories table."""
     if not tag_names:
         return
@@ -70,7 +88,8 @@ def ensure_tags_exist(tag_names):
                 )
 
 
-def set_filename(job_id, filename):
+def set_filename(job_id: int, filename: str) -> None:
+    """Set the resolved on-disk filename for a job."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -79,13 +98,23 @@ def set_filename(job_id, filename):
             )
 
 
-def delete_job(job_id):
+def delete_job(job_id: int) -> None:
+    """Hard-delete a job row by id."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM jobs WHERE id = %s", (job_id,))
 
 
-def insert_job(url, title, source, category, length, crop_sides=False, tags=None):
+def insert_job(
+    url: str,
+    title: str,
+    source: str,
+    category: str,
+    length: str,
+    crop_sides: bool = False,
+    tags: Optional[list[str]] = None,
+) -> int:
+    """Create a new pending job; return its id."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -97,7 +126,7 @@ def insert_job(url, title, source, category, length, crop_sides=False, tags=None
             return cur.fetchone()[0]
 
 
-def claim_next_pending():
+def claim_next_pending() -> Optional[Job]:
     """Atomically grab the next pending job and mark it running."""
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -112,7 +141,8 @@ def claim_next_pending():
             return _row(cur)
 
 
-def set_pid(job_id, pid, log_path):
+def set_pid(job_id: int, pid: int, log_path: str) -> None:
+    """Record the OS pid + log path for a running job."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -121,7 +151,8 @@ def set_pid(job_id, pid, log_path):
             )
 
 
-def mark_done(job_id):
+def mark_done(job_id: int) -> None:
+    """Mark a job as 'done' and clear its pid."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -130,7 +161,8 @@ def mark_done(job_id):
             )
 
 
-def mark_failed(job_id, error_msg=""):
+def mark_failed(job_id: int, error_msg: str = "") -> None:
+    """Mark a job as 'failed' with a truncated error message (500 char cap)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -139,7 +171,8 @@ def mark_failed(job_id, error_msg=""):
             )
 
 
-def mark_cancelled(job_id):
+def mark_cancelled(job_id: int) -> None:
+    """Mark a job as 'cancelled' and clear its pid."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -148,7 +181,8 @@ def mark_cancelled(job_id):
             )
 
 
-def mark_pipeline_status(job_id, status):
+def mark_pipeline_status(job_id: int, status: str) -> None:
+    """Set jobs.pipeline_status (typically 'live' or 'rejected' from the watchdog)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -157,14 +191,16 @@ def mark_pipeline_status(job_id, status):
             )
 
 
-def get_job(job_id):
+def get_job(job_id: int) -> Optional[Job]:
+    """Return a single job by id, or None if not found."""
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT * FROM jobs WHERE id = %s", (job_id,))
             return _row(cur)
 
 
-def get_queue():
+def get_queue() -> list[Job]:
+    """Return all currently-pending and running jobs, oldest first."""
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
@@ -173,7 +209,11 @@ def get_queue():
             return _rows(cur)
 
 
-def get_pipeline_pending():
+def get_pipeline_pending() -> list[Job]:
+    """
+    Return YouTube/playlist jobs whose downloader is done but the dropbox-watchdog
+    on zikzak hasn't yet acknowledged (pipeline_status IS NULL).
+    """
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # pipeline_status starts NULL when a job completes; the
@@ -189,7 +229,7 @@ def get_pipeline_pending():
             return _rows(cur)
 
 
-def get_tags_by_category(category=None):
+def get_tags_by_category(category: Optional[str] = None) -> TagMap:
     """Return a dict mapping (category, subdir, filename) -> [tag, ...] for non-primary tags."""
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -209,14 +249,15 @@ def get_tags_by_category(category=None):
                     WHERE mfc.is_primary = FALSE
                     ORDER BY mf.id, mfc.category_name
                 """)
-            result = {}
+            result: TagMap = {}
             for row in cur.fetchall():
                 key = (row["category"], row["subdir"] or "", row["filename"])
                 result.setdefault(key, []).append(row["tag"])
             return result
 
 
-def get_recent(limit=60):
+def get_recent(limit: int = 60) -> list[Job]:
+    """Return the most recently updated completed/failed/cancelled jobs."""
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
@@ -228,7 +269,10 @@ def get_recent(limit=60):
 
 # ─── Media file registry ─────────────────────────────────────────────────────
 
-def list_media_files(category=None, length=None):
+def list_media_files(
+    category: Optional[str] = None,
+    length: Optional[str] = None,
+) -> list[MediaRow]:
     """
     Query media_files table. Returns list of dicts: {category, length, filename, size, mtime}.
     'length' maps to the subdir column; 'size' to filesize_bytes; 'mtime' to ingest_date epoch.
@@ -251,8 +295,17 @@ def list_media_files(category=None, length=None):
             return _rows(cur)
 
 
-def upsert_media_file(category, length, filename, filesize_bytes=None,
-                      duration_secs=None, width=None, height=None, bitrate_kbps=None):
+def upsert_media_file(
+    category: str,
+    length: str,
+    filename: str,
+    filesize_bytes: Optional[int] = None,
+    duration_secs: Optional[float] = None,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    bitrate_kbps: Optional[int] = None,
+) -> None:
+    """Insert or update a media_files row keyed on (category, subdir, filename)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -271,7 +324,8 @@ def upsert_media_file(category, length, filename, filesize_bytes=None,
                   duration_secs, width, height, bitrate_kbps))
 
 
-def remove_media_file(category, length, filename):
+def remove_media_file(category: str, length: str, filename: str) -> None:
+    """Delete a media_files row keyed on (category, subdir, filename)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -280,7 +334,14 @@ def remove_media_file(category, length, filename):
             )
 
 
-def move_media_file_db(category, length, filename, to_category, to_length):
+def move_media_file_db(
+    category: str,
+    length: str,
+    filename: str,
+    to_category: str,
+    to_length: str,
+) -> None:
+    """Reparent a media_files row to a new (category, length) tuple."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(

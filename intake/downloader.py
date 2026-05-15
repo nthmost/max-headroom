@@ -3,12 +3,16 @@ Download logic for YouTube (via yt-dlp) and Internet Archive (via ia CLI).
 """
 
 import json
+import logging
 import os
 import re
 import shlex
-import subprocess
 import shutil
+import subprocess
 import time
+import urllib.parse
+import urllib.request
+
 import db
 from config import (
     INCOMING_DIR, LOG_DIR,
@@ -18,6 +22,15 @@ from config import (
     HW_ACCEL, VAAPI_DEVICE, TRANSCODE_DIR,
     classify_length,
 )
+
+# Optional dep — only used when source='ia'. Guard so importing this module
+# never fails on a host that hasn't installed the archive.org library.
+try:
+    import internetarchive as ia_lib
+except ImportError:  # pragma: no cover - exercised on hosts lacking the lib
+    ia_lib = None
+
+log = logging.getLogger(__name__)
 
 
 def _log_path(job_id):
@@ -70,8 +83,6 @@ def resolve_youtube_oembed(url):
     Return (title, None) using YouTube's oEmbed endpoint — instant, no API key.
     Duration is not available via oEmbed; returns None.
     """
-    import urllib.request
-    import urllib.parse
     api = "https://www.youtube.com/oembed?format=json&url=" + urllib.parse.quote(url, safe="")
     with urllib.request.urlopen(api, timeout=10) as resp:
         data = json.loads(resp.read())
@@ -131,23 +142,30 @@ def expand_youtube_playlist(url):
 def resolve_ia_metadata(identifier):
     """
     Return (title, duration_seconds) for an Internet Archive identifier.
+    Returns (identifier, None) if the lib is unavailable or the lookup fails.
     """
-    try:
-        import internetarchive as ia_lib
-        item = ia_lib.get_item(identifier)
-        meta = item.metadata
-        title = meta.get("title", identifier)
-        duration = None
-        for f in item.files:
-            if "length" in f:
-                try:
-                    duration = int(float(f["length"]))
-                    break
-                except (ValueError, TypeError):
-                    pass
-        return title, duration
-    except Exception:
+    if ia_lib is None:
         return identifier, None
+    try:
+        item = ia_lib.get_item(identifier)
+    except Exception:
+        log.exception("ia_lib.get_item failed for %s", identifier)
+        return identifier, None
+    title = item.metadata.get("title", identifier)
+    return title, _ia_first_length(item.files)
+
+
+def _ia_first_length(files):
+    """Pick the first parseable 'length' field from an IA item's files list."""
+    for f in files:
+        raw = f.get("length")
+        if raw is None:
+            continue
+        try:
+            return int(float(raw))
+        except (ValueError, TypeError):
+            continue
+    return None
 
 
 def resolve_youtube_rich_metadata(url):
@@ -174,47 +192,46 @@ def resolve_youtube_rich_metadata(url):
     }
 
 
+def _empty_ia_metadata(identifier):
+    """Default IA metadata shape when no useful data is available."""
+    return {
+        "title": identifier,
+        "duration_seconds": None,
+        "description": "",
+        "tags": [],
+        "channel": "",
+        "uploader": "",
+    }
+
+
 def resolve_ia_rich_metadata(identifier):
     """
     Return a rich metadata dict for an Internet Archive identifier.
     Never raises; returns partial data on error.
     """
+    if ia_lib is None:
+        return _empty_ia_metadata(identifier)
     try:
-        import internetarchive as ia_lib
         item = ia_lib.get_item(identifier)
-        meta = item.metadata
-        title = meta.get("title", identifier)
-        description = meta.get("description", "")
-        if isinstance(description, list):
-            description = " ".join(description)
-        subject = meta.get("subject", [])
-        if isinstance(subject, str):
-            subject = [subject]
-        duration = None
-        for f in item.files:
-            if "length" in f:
-                try:
-                    duration = int(float(f["length"]))
-                    break
-                except (ValueError, TypeError):
-                    pass
-        return {
-            "title": title,
-            "duration_seconds": duration,
-            "description": str(description)[:500],
-            "tags": list(subject)[:10],
-            "channel": meta.get("creator", ""),
-            "uploader": meta.get("uploader", ""),
-        }
     except Exception:
-        return {
-            "title": identifier,
-            "duration_seconds": None,
-            "description": "",
-            "tags": [],
-            "channel": "",
-            "uploader": "",
-        }
+        log.exception("ia_lib.get_item failed for %s", identifier)
+        return _empty_ia_metadata(identifier)
+
+    meta = item.metadata
+    description = meta.get("description", "")
+    if isinstance(description, list):
+        description = " ".join(description)
+    subject = meta.get("subject", [])
+    if isinstance(subject, str):
+        subject = [subject]
+    return {
+        "title": meta.get("title", identifier),
+        "duration_seconds": _ia_first_length(item.files),
+        "description": str(description)[:500],
+        "tags": list(subject)[:10],
+        "channel": meta.get("creator", ""),
+        "uploader": meta.get("uploader", ""),
+    }
 
 
 def parse_ia_identifier(url_or_id):
@@ -227,56 +244,71 @@ def parse_ia_identifier(url_or_id):
     return None
 
 
+def _dropbox_paths(job_id, filename):
+    """Return (incoming, rejected) absolute paths for a job's dropbox file."""
+    return (
+        f"{ZIKZAK_DROPBOX}/{job_id}__{filename}",
+        f"{ZIKZAK_DROPBOX}/rejected/{job_id}__{filename}",
+    )
+
+
+def _probe_dropbox_state(job_id, filename):
+    """
+    SSH-probe a single file in the dropbox tree.
+    Returns one of: 'pending' (still in dropbox), 'rejected' (in rejected/),
+    'gone' (neither — watchdog filed it, presumed live).
+    """
+    incoming, rejected = _dropbox_paths(job_id, filename)
+    check_cmd = (
+        f"if [ -f {shlex.quote(incoming)} ]; then echo 'pending'; "
+        f"elif [ -f {shlex.quote(rejected)} ]; then echo 'rejected'; "
+        f"else echo 'gone'; fi"
+    )
+    _, stdout, _ = _ssh_zikzak(check_cmd, timeout=15)
+    return stdout.strip()
+
+
+def _file_landed_in_media(category, length, filename):
+    """Return True if the named file exists under ZIKZAK_MEDIA/<cat>/<len>/."""
+    media_path = f"{ZIKZAK_MEDIA}/{category}/{length}/{filename}"
+    rc, out, _ = _ssh_zikzak(f"ls {shlex.quote(media_path)} 2>/dev/null", timeout=15)
+    return rc == 0 and bool(out.strip())
+
+
 def _check_pipeline(job):
     """
-    Check whether a completed job has been filed by the dropbox watchdog.
+    Reconcile a completed job with watchdog reality and update its
+    pipeline_status. Idempotent + crash-safe — called repeatedly by the
+    poller; any exception is swallowed so the poller keeps running.
 
-    The watchdog sets pipeline_status='live' when it validates and files
-    a transcoded file into /mnt/media/. We just need to re-read the job
-    from the DB to see if the watchdog has updated it.
-
-    If the job is still 'done' with no pipeline_status after the watchdog
-    has had time to process it, something went wrong — check the watchdog
-    logs and /mnt/dropbox/rejected/ on zikzak.
+    State machine:
+      live    -> already done; no-op
+      pending -> file still in /mnt/dropbox/; wait for next tick
+      rejected-> watchdog rejected; record it
+      gone    -> watchdog filed it; verify in /mnt/media/ and mark live
     """
-    job_id = job["id"]
     try:
-        current = db.get_job(job_id)
-        if current and current.get("pipeline_status") == "live":
-            return  # already filed by watchdog, nothing to do
-
-        # Check if the file is sitting in the dropbox (not yet processed)
-        # or in rejected/ (validation failed). Only SSH if needed.
-        filename = current.get("filename", "")
-        if not filename:
-            return
-
-        # Look for the file in dropbox or rejected
-        dropbox_file = f"{ZIKZAK_DROPBOX}/{job_id}__{filename}"
-        rejected_file = f"{ZIKZAK_DROPBOX}/rejected/{job_id}__{filename}"
-        check_cmd = (
-            f"if [ -f {shlex.quote(dropbox_file)} ]; then echo 'pending'; "
-            f"elif [ -f {shlex.quote(rejected_file)} ]; then echo 'rejected'; "
-            f"else echo 'gone'; fi"
-        )
-        rc, stdout, _ = _ssh_zikzak(check_cmd, timeout=15)
-        status = stdout.strip()
-
-        if status == "rejected":
-            db.mark_pipeline_status(job_id, "rejected")
-        elif status == "gone":
-            # File is neither in dropbox nor rejected — the watchdog filed it.
-            # Confirm by checking /mnt/media/
-            cat = current["category"]
-            leng = current["length"]
-            media_check = f"ls {ZIKZAK_MEDIA}/{cat}/{leng}/{shlex.quote(filename)} 2>/dev/null"
-            rc2, out2, _ = _ssh_zikzak(media_check, timeout=15)
-            if rc2 == 0 and out2.strip():
-                db.mark_pipeline_status(job_id, "live")
-        # status == "pending": still waiting, poller will retry
-
+        current = db.get_job(job["id"])
     except Exception:
-        pass  # will retry on next poll
+        log.exception("DB read failed in _check_pipeline for job %s", job["id"])
+        return
+    if not current or current.get("pipeline_status") == "live":
+        return
+    filename = current.get("filename", "")
+    if not filename:
+        return
+    try:
+        status = _probe_dropbox_state(current["id"], filename)
+    except Exception:
+        log.exception("dropbox probe failed for job %s", current["id"])
+        return
+    if status == "rejected":
+        db.mark_pipeline_status(current["id"], "rejected")
+    elif status == "gone" and _file_landed_in_media(
+        current["category"], current["length"], filename
+    ):
+        db.mark_pipeline_status(current["id"], "live")
+    # status == "pending": still waiting; poller retries on next tick.
 
 
 def list_zikzak_media(category=None, length=None):
@@ -348,7 +380,8 @@ def pipeline_poller_loop():
             for job in db.get_pipeline_pending():
                 _check_pipeline(job)
         except Exception:
-            pass
+            # Loop must not die — log and try again next tick.
+            log.exception("pipeline_poller_loop iteration failed")
 
 
 def _parse_log_for_filename(log_path):

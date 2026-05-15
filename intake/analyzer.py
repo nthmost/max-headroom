@@ -3,9 +3,19 @@ AI-powered metadata classification using Claude.
 """
 
 import json
+import logging
 import os
 import re
+
 from config import CATEGORIES, classify_length
+
+# Optional dep — module loads fine without it; classify() falls back to defaults.
+try:
+    import anthropic
+except ImportError:  # pragma: no cover
+    anthropic = None
+
+log = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
