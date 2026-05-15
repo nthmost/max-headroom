@@ -7,3 +7,6 @@ ansible/.vault_password
 *.swp
 *.pyc
 __pycache__/
+
+# Claude Code per-project settings (machine-local)
+.claude/
