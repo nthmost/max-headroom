@@ -481,12 +481,8 @@ def purge_job_files(job):
         elif glob_pat:
             _delete_remote_glob(remote_dir, glob_pat)
 
-    # Regenerate playlists on zikzak regardless
-    try:
-        _ssh_zikzak("sudo -u max /home/max/bin/regenerate-playlists.sh", timeout=60)
-        deleted.append("zikzak:playlists regenerated")
-    except Exception as e:
-        errors.append(f"playlist regen: {e}")
+    # No playlist regen — liquidsoap uses inotify (reload_mode="watch") so
+    # source listings update automatically when files are added/removed.
 
     return {"deleted": deleted, "errors": errors, "not_found": not_found}
 
@@ -497,9 +493,11 @@ def run_job(job):
 
     All paths:
       1. Download the raw file (yt-dlp on loki, or ia CLI locally)
-      2. Transcode to 960x540 H.264 on loki (VAAPI)
+      2. Transcode to 960x540 H.264 on loki (NVENC on RTX 4080 by default;
+         VAAPI fallback selectable via HW_ACCEL env var)
       3. rsync transcoded file to zikzak:/mnt/dropbox/<job_id>__<filename>.mp4
       4. Watchdog on zikzak validates and files into /mnt/media/<cat>/<len>/
+         and sets pipeline_status='live' (or 'rejected') in mhbn.
 
     YouTube: steps 1-3 happen in a single SSH session on loki.
     IA: step 1 runs locally, steps 2-3 via a local transcode + rsync.

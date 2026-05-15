@@ -1,6 +1,15 @@
 ---
 # Intake App role tasks
 
+- name: Ensure python venv tooling + rsync are present
+  ansible.builtin.apt:
+    name:
+      - python3-venv
+      - python3-pip
+      - rsync
+    state: present
+  become: yes
+
 - name: Ensure intake app directory exists
   ansible.builtin.file:
     path: "{{ intake_app_path }}"
@@ -8,6 +17,16 @@
     owner: "{{ intake_service_user }}"
     group: "{{ intake_service_group }}"
     mode: '0755'
+  become: yes
+
+- name: Ensure log directory exists
+  ansible.builtin.file:
+    path: "{{ intake_log_dir }}"
+    state: directory
+    owner: "{{ intake_service_user }}"
+    group: "{{ intake_service_group }}"
+    mode: '0755'
+  become: yes
 
 - name: Ensure secrets directory exists
   ansible.builtin.file:
@@ -16,6 +35,42 @@
     owner: "{{ intake_service_user }}"
     group: "{{ intake_service_group }}"
     mode: '0700'
+  become: yes
+
+- name: Deploy intake Python sources (excludes one-shot migration scripts)
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/../../intake/"
+    dest: "{{ intake_app_path }}/"
+    delete: no
+    rsync_opts:
+      - "--exclude=migrate_*.py"
+      - "--exclude=migrate_to_pg.py"
+      - "--exclude=insert_fallout.py"
+      - "--exclude=deploy.sh"
+      - "--exclude=intake.service"
+      - "--exclude=venv/"
+      - "--exclude=__pycache__/"
+      - "--exclude=*.pyc"
+  become: yes
+  notify: Restart intake
+
+- name: Fix ownership on deployed sources
+  ansible.builtin.file:
+    path: "{{ intake_app_path }}"
+    state: directory
+    owner: "{{ intake_service_user }}"
+    group: "{{ intake_service_group }}"
+    recurse: yes
+  become: yes
+
+- name: Create / refresh Python venv with intake requirements
+  ansible.builtin.pip:
+    requirements: "{{ intake_app_path }}/requirements.txt"
+    virtualenv: "{{ intake_venv_path }}"
+    virtualenv_command: /usr/bin/python3 -m venv
+  become: yes
+  become_user: "{{ intake_service_user }}"
+  notify: Restart intake
 
 - name: Deploy database connection env file
   ansible.builtin.template:
@@ -24,6 +79,8 @@
     owner: "{{ intake_service_user }}"
     group: "{{ intake_service_group }}"
     mode: '0600'
+  become: yes
+  notify: Restart intake
 
 - name: Deploy intake systemd service
   ansible.builtin.template:

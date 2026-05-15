@@ -176,10 +176,14 @@ def get_queue():
 def get_pipeline_pending():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # pipeline_status starts NULL when a job completes; the
+            # dropbox-watchdog on zikzak flips it to 'live' or 'rejected'.
+            # ('on_zikzak' was a legacy intermediate state from the pre-
+            # watchdog flow; verified zero rows in mhbn as of 2026-05-15.)
             cur.execute("""
                 SELECT * FROM jobs
                 WHERE status = 'done' AND source != 'ia'
-                AND (pipeline_status IS NULL OR pipeline_status = 'on_zikzak')
+                AND pipeline_status IS NULL
                 ORDER BY id ASC
             """)
             return _rows(cur)

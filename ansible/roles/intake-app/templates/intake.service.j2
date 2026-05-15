@@ -1,6 +1,7 @@
 [Unit]
 Description=Max Headroom Intake Web App
 After=network.target postgresql.service
+Wants=postgresql.service
 
 [Service]
 Type=simple
@@ -8,9 +9,22 @@ User={{ intake_service_user }}
 Group={{ intake_service_group }}
 WorkingDirectory={{ intake_app_path }}
 EnvironmentFile=/home/{{ intake_service_user }}/.secrets/mhbn-db.env
-ExecStart={{ intake_venv_path }}/bin/python app.py
+Environment=INTAKE_API_KEY={{ intake_api_key }}
+Environment=BASE_PATH={{ intake_base_path }}
+Environment=HW_ACCEL={{ intake_hw_accel }}
+Environment=VAAPI_DEVICE={{ intake_vaapi_device }}
+Environment=INCOMING_DIR={{ intake_incoming_path }}
+Environment=TRANSCODE_DIR={{ intake_transcoded_path }}
+Environment=ZIKZAK_HOST={{ intake_zikzak_host }}
+Environment=ZIKZAK_USER={{ intake_zikzak_user }}
+Environment=ZIKZAK_JUMP={{ intake_zikzak_jump }}
+Environment=ZIKZAK_DROPBOX={{ intake_zikzak_dropbox }}
+Environment=LOG_DIR={{ intake_log_dir }}
+ExecStart={{ intake_venv_path }}/bin/python intake.py
 Restart=always
 RestartSec=5
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

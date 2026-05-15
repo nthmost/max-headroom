@@ -4,17 +4,22 @@
 # Application paths
 intake_app_path: /home/{{ service_user }}/intake
 intake_venv_path: "{{ intake_app_path }}/venv"
+intake_log_dir: /var/log/transcode/intake
 
 # Service configuration
 intake_service_name: intake
 intake_port: 8765
 intake_bind: 0.0.0.0
+# Reverse-proxy mount point (set BASE_PATH in env; empty for root-mount).
+intake_base_path: /media
+# Auth key — override in vault.yml; do NOT commit a real value here.
+intake_api_key: "{{ vault_intake_api_key | default('changeme') }}"
 
 # Service user (should match service_user from inventory)
 intake_service_user: "{{ service_user }}"
 intake_service_group: "{{ service_group }}"
 
-# Database connection (loki connects directly)
+# Database connection (loki's intake talks to its local postgres)
 intake_db_host: "{{ db_host_loki }}"
 intake_db_port: "{{ db_port_loki }}"
 intake_db_name: "{{ db_name }}"
@@ -26,14 +31,13 @@ intake_incoming_path: /mnt/incoming
 intake_media_path: /mnt/media
 intake_transcoded_path: /mnt/media_transcoded
 
-# Transcode settings
-intake_video_width: 960
-intake_video_height: 540
-intake_video_bitrate: 1200k
-intake_audio_bitrate: 128k
+# Transcode settings — NVENC on RTX 4080 by default.
+intake_hw_accel: nvenc       # "nvenc" or "vaapi"
+intake_vaapi_device: /dev/dri/renderD128
 
-# Zikzak push settings (for rsync after transcode)
+# Zikzak push settings (rsync to dropbox; watchdog files into /mnt/media)
 intake_zikzak_host: 10.100.0.5
+intake_zikzak_jump: zephyr
 intake_zikzak_user: nthmost
-intake_zikzak_media_path: /mnt/media
+intake_zikzak_dropbox: /mnt/dropbox
 intake_rsync_bwlimit: 20000  # KB/s

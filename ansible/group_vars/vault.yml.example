@@ -12,3 +12,6 @@ vault_icecast_relay_password: "changeme"
 
 # Database password
 vault_db_password: "changeme"
+
+# Intake web app API key (auth for POST endpoints)
+vault_intake_api_key: "changeme"
