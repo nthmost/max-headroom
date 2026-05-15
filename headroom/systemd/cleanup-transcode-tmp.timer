@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily cleanup of transcode temp directories
+Requires=cleanup-transcode-tmp.service
+
+[Timer]
+# Run daily at 4 AM
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

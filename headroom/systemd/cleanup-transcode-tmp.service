@@ -1,0 +1,10 @@
+[Unit]
+Description=Clean up old transcode temp directories
+After=local-fs.target
+
+[Service]
+Type=oneshot
+# Delete transcode temp dirs older than 1 day
+ExecStart=/usr/bin/find /tmp -maxdepth 1 -type d \( -name "staging-*" -o -name "*transcode*" \) -mtime +1 -exec rm -rf {} +
+# Also clean up old transcode logs older than 7 days
+ExecStart=/usr/bin/find /tmp -maxdepth 1 -type f -name "*transcode*.log" -mtime +7 -delete
