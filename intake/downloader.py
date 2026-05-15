@@ -13,6 +13,8 @@ import time
 import urllib.parse
 import urllib.request
 
+import internetarchive as ia_lib
+
 import db
 from config import (
     INCOMING_DIR, LOG_DIR,
@@ -22,13 +24,6 @@ from config import (
     HW_ACCEL, VAAPI_DEVICE, TRANSCODE_DIR,
     classify_length,
 )
-
-# Optional dep — only used when source='ia'. Guard so importing this module
-# never fails on a host that hasn't installed the archive.org library.
-try:
-    import internetarchive as ia_lib
-except ImportError:  # pragma: no cover - exercised on hosts lacking the lib
-    ia_lib = None
 
 log = logging.getLogger(__name__)
 
@@ -142,10 +137,8 @@ def expand_youtube_playlist(url):
 def resolve_ia_metadata(identifier):
     """
     Return (title, duration_seconds) for an Internet Archive identifier.
-    Returns (identifier, None) if the lib is unavailable or the lookup fails.
+    Returns (identifier, None) when the IA lookup fails (network etc).
     """
-    if ia_lib is None:
-        return identifier, None
     try:
         item = ia_lib.get_item(identifier)
     except Exception:
@@ -209,8 +202,6 @@ def resolve_ia_rich_metadata(identifier):
     Return a rich metadata dict for an Internet Archive identifier.
     Never raises; returns partial data on error.
     """
-    if ia_lib is None:
-        return _empty_ia_metadata(identifier)
     try:
         item = ia_lib.get_item(identifier)
     except Exception:

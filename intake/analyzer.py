@@ -7,13 +7,9 @@ import logging
 import os
 import re
 
-from config import CATEGORIES, classify_length
+import anthropic
 
-# Optional dep — module loads fine without it; classify() falls back to defaults.
-try:
-    import anthropic
-except ImportError:  # pragma: no cover
-    anthropic = None
+from config import CATEGORIES, classify_length
 
 log = logging.getLogger(__name__)
 
@@ -116,8 +112,8 @@ def classify(metadata: dict, existing_tags: list = None) -> dict:
     anthropic library is missing, or the API call fails.
     """
     duration = metadata.get("duration_seconds") or 0
-    if not ANTHROPIC_API_KEY or anthropic is None:
-        return _fallback_result(duration, "No ANTHROPIC_API_KEY / lib; defaults applied.")
+    if not ANTHROPIC_API_KEY:
+        return _fallback_result(duration, "No ANTHROPIC_API_KEY configured; defaults applied.")
     prompt = _build_prompt(metadata, existing_tags or [])
     try:
         result = _call_claude(prompt)
