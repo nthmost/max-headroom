@@ -68,10 +68,12 @@ OUTPUT:  /mnt/media_transcoded/gaming_memes/bg3/short/Frank Reynolds.mp4
 | Parameter | Value |
 |-----------|-------|
 | Resolution | 960x540 |
-| Codec | H.264 Main Profile (VAAPI - Intel UHD GPU) |
+| Codec | H.264 Main Profile (NVENC - RTX 4080 on loki) |
 | Video bitrate | 1.2 Mbps |
 | Audio | AAC 128kbps stereo 44.1kHz |
 | Container | MP4 (faststart) |
+
+**Note:** loki uses NVIDIA NVENC (RTX 4080), not VAAPI. The `max` user must be in the `video` and `render` groups for GPU access.
 
 ## Adding New Videos
 
@@ -119,9 +121,14 @@ cd ~/bin
 **What happens:**
 1. Scans `/mnt/media/` for video files (.mp4, .webm, .mkv, .ogv, .avi)
 2. For each file, creates matching path in `/mnt/media_transcoded/`
-3. Transcodes to 960x540 H.264 using NVENC
+3. Transcodes to 960x540 H.264 using NVENC (RTX 4080)
 4. Adds silent audio track if source has no audio
 5. Skips files already transcoded (safe to re-run)
+
+**GPU requirements:** The `max` user needs to be in `video` and `render` groups:
+```bash
+sudo usermod -aG video,render max
+```
 
 **Output:**
 ```
@@ -186,13 +193,13 @@ yt-dlp "https://youtube.com/watch?v=xxxxx"
 
 ## Manual Single-File Transcode
 
-For testing or one-off files (using VAAPI):
+For testing or one-off files (using NVENC on loki):
 
 ```bash
-ffmpeg -vaapi_device /dev/dri/renderD128 \
+ffmpeg -hwaccel cuda -hwaccel_output_format cuda \
     -i input.webm \
-    -vf "format=nv12,hwupload,scale_vaapi=960:540:force_original_aspect_ratio=decrease" \
-    -c:v h264_vaapi -b:v 1200k -profile:v main \
+    -vf "scale_cuda=960:540:force_original_aspect_ratio=decrease" \
+    -c:v h264_nvenc -preset p4 -b:v 1200k -profile:v main \
     -c:a aac -b:a 128k -ar 44100 -ac 2 \
     -movflags +faststart \
     output.mp4
@@ -200,12 +207,23 @@ ffmpeg -vaapi_device /dev/dri/renderD128 \
 
 For files without audio:
 ```bash
-ffmpeg -vaapi_device /dev/dri/renderD128 \
+ffmpeg -hwaccel cuda -hwaccel_output_format cuda \
     -i input.webm \
     -f lavfi -i anullsrc=r=44100:cl=stereo \
+    -vf "scale_cuda=960:540:force_original_aspect_ratio=decrease" \
+    -c:v h264_nvenc -preset p4 -b:v 1200k -profile:v main \
+    -map 0:v -map 1:a -c:a aac -b:a 128k -ar 44100 -shortest \
+    -movflags +faststart \
+    output.mp4
+```
+
+**For headroom** (which has Intel VAAPI):
+```bash
+ffmpeg -vaapi_device /dev/dri/renderD128 \
+    -i input.webm \
     -vf "format=nv12,hwupload,scale_vaapi=960:540:force_original_aspect_ratio=decrease" \
     -c:v h264_vaapi -b:v 1200k -profile:v main \
-    -map 0:v -map 1:a -c:a aac -b:a 128k -ar 44100 -shortest \
+    -c:a aac -b:a 128k -ar 44100 -ac 2 \
     -movflags +faststart \
     output.mp4
 ```

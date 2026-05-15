@@ -11,9 +11,9 @@ A systemd service applies these settings on boot:
 | Setting | Value | Purpose |
 |---------|-------|---------|
 | CPU Governor | `performance` | Prevents frequency scaling latency |
-| GPU Min Freq | 700 MHz | Prevents GPU downclocking during encode |
-| GPU Power Profile | `base` | Better sustained performance |
 | Swappiness | 10 | Prefer keeping media buffers in RAM |
+
+**Note:** GPU power management for NVIDIA RTX 4080 is handled by the driver. NVIDIA GPUs boost automatically under load and don't require manual frequency tuning.
 
 ### Manual Verification
 
@@ -22,17 +22,12 @@ A systemd service applies these settings on boot:
 cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 # Expected: performance
 
-# Check GPU frequency
-cat /sys/class/drm/card1/gt_min_freq_mhz
-# Expected: 700
-
-# Check GPU power profile
-cat /sys/class/drm/card1/gt/gt0/slpc_power_profile
-# Expected: [base]
-
 # Check swappiness
 cat /proc/sys/vm/swappiness
 # Expected: 10
+
+# Check GPU state
+nvidia-smi
 ```
 
 ### Service Management
@@ -48,27 +43,9 @@ sudo systemctl restart loki-perf-tuning
 sudo systemctl disable loki-perf-tuning
 ```
 
-## VAAPI Hardware Encoding (loki.nthmost.net)
+## NVENC Hardware Encoding (loki.nthmost.net)
 
-loki.nthmost.net uses Intel VAAPI for H.264 encoding of IA downloads:
-
-```bash
-# Check VAAPI support
-vainfo
-
-# Check available encoders
-ffmpeg -encoders | grep vaapi
-```
-
-### Supported Profiles
-- H.264 (Main, High, Constrained Baseline)
-- HEVC (Main, Main10)
-- VP9 (Profile 0-3)
-- AV1 (Profile 0)
-
-## NVENC Hardware Encoding (zikzak)
-
-zikzak uses NVIDIA NVENC for the live streaming encode:
+loki.nthmost.net uses NVIDIA NVENC (RTX 4080) for H.264 encoding:
 
 ```bash
 # Check GPU
@@ -80,8 +57,50 @@ ffmpeg -encoders | grep nvenc
 
 ### NVENC Presets
 - `p1` - Fastest, lowest quality
-- `p4` - Balanced (used for transcoding)
+- `p4` - Balanced (default for transcoding)
 - `p7` - Slowest, highest quality
+
+### User Permissions
+The `max` user (which runs the intake service) must be in the `video` and `render` groups for GPU access:
+```bash
+sudo usermod -aG video,render max
+```
+
+## NVENC Hardware Encoding (zikzak)
+
+zikzak uses NVIDIA NVENC (GTX 1080) for the live streaming encode:
+
+```bash
+# Check GPU
+nvidia-smi
+
+# Check NVENC encoders
+ffmpeg -encoders | grep nvenc
+```
+
+### NVENC Presets
+- `p1` - Fastest, lowest quality
+- `p4` - Balanced (used for streaming)
+- `p7` - Slowest, highest quality
+
+### GPU Stability (2026-05-02)
+
+**Current configuration:** Single GTX 1080 (8GB VRAM)
+
+**Removed:** GTX 1060 6GB (was causing "Display engine timeout" errors and X server hangs)
+
+**Performance baseline (GTX 1080 alone):**
+- GPU utilization: ~11% (4x NVENC encoders + mpv NVDEC decode)
+- VRAM usage: 1.9 GB / 8 GB (23%)
+- Temperature: ~50°C
+- Power draw: 41W / 180W TDP
+- **Massive headroom available** — could support higher bitrate or better preset
+
+**Why not GPU decode in liquidsoap?**
+Attempted to enable NVDEC in liquidsoap via `settings.decoder.ffmpeg.hwaccel.set("cuda")` 
+but it caused crashes on startup. Would require different liquidsoap version or major 
+pipeline redesign. CPU decode is not a bottleneck (72% of one core), so freeing it up 
+wouldn't meaningfully help. Reverted to CPU decode.
 
 ## Resource Usage (zikzak)
 
@@ -118,10 +137,13 @@ at ~50–70% means they are each fully occupying one physical core — normal an
 ```bash
 # loki: real-time CPU/GPU usage
 htop
-sudo intel_gpu_top
-cat /sys/class/drm/card1/gt_cur_freq_mhz
+nvidia-smi
+watch -n1 nvidia-smi
 
 # zikzak: GPU + Liquidsoap
 nvidia-smi
 sudo tail -f /home/max/liquidsoap/channels.log
+
+# Watch GPU utilization continuously
+watch -n2 'nvidia-smi --query-gpu=utilization.gpu,utilization.memory,memory.used,memory.total,temperature.gpu,power.draw --format=csv,noheader,nounits'
 ```

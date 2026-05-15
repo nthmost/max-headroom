@@ -99,6 +99,27 @@ If CPU is high, some media may not be transcoded. Check for non-MP4 files:
 find /mnt/media -type f \( -name "*.ogv" -o -name "*.webm" -o -name "*.mkv" \)
 ```
 
+### GPU Hardware Issues (zikzak)
+
+**Symptom:** X server crashes with "Display engine timeout" errors, system becomes unresponsive, or GPU randomly disappears from `nvidia-smi`.
+
+**Diagnosis:** Check dmesg for GPU errors:
+```bash
+sudo dmesg | grep -i "nvidia\|gpu\|drm" | tail -20
+```
+
+**Fix (2026-05-02):** The GTX 1060 6GB was physically removed due to repeated display engine timeout errors. The system now runs stably on a single GTX 1080 (8GB VRAM) with massive headroom:
+- GPU utilization: ~11% (4x NVENC encoders + mpv NVDEC decode)
+- VRAM usage: 1.9 GB / 8 GB (23%)
+- Temperature: ~50°C
+- Power draw: 41W / 180W TDP
+
+**Why not GPU decode in liquidsoap?** Attempted to enable NVDEC via `settings.decoder.ffmpeg.hwaccel.set("cuda")` in `channels.liq`, but liquidsoap crashed on startup. Would require a different liquidsoap version or major pipeline redesign. CPU decode is not a bottleneck (72% of one core), so there's no meaningful benefit to pursuing this further.
+
+**Update (2026-05-14 rebuild):** The original system drive failed and zikzak was rebuilt from scratch on Linux Mint 22.3. The GTX 1060 was reinstalled alongside the GTX 1080 and is now the **dedicated kiosk display GPU** — it drives HDMI-A-2 to the quad splitter via direct DRM/KMS (no X), while the GTX 1080 handles all 4 liquidsoap NVENC encoders and the optional admin desktop. See [Zikzak Architecture](zikzak-architecture.md) for the split rationale.
+
+The "display engine timeout" errors that caused the May 2 removal have not recurred so far on the new install (different kernel, different driver path: kiosk uses direct DRM rather than Xorg). **Watch `dmesg | grep -i nvidia` if the kiosk freezes or `mpv` repeatedly restarts** — if the same class of error returns we'll need to fall back to single-GPU operation and rework the kiosk to share the 1080.
+
 ### Liquidsoap High CPU (~80-100%)
 
 **Symptom:** `zikzak-liquidsoap` pegged at 80%+ CPU; log shows repeated `We must catchup X seconds!`
@@ -178,6 +199,40 @@ ffprobe -v error input.file
 ffmpeg -v error -i input.file -f null -
 ```
 
+### Disk Space Issues
+
+**Check disk usage:**
+```bash
+df -h /mnt/media
+du -sh /tmp/*transcode* /tmp/staging-* 2>/dev/null
+```
+
+**Common causes:**
+- Old transcode temp directories on headroom or zikzak (can be 20-30GB each)
+- Media files not cleaned up after failed transcodes
+- Large incoming files not processed
+
+**Cleanup on headroom:**
+Temp directories are automatically cleaned daily at 4 AM by `cleanup-transcode-tmp.timer`:
+- Removes `/tmp/staging-*` and `/tmp/*transcode*` directories older than 1 day
+- Removes `*.log` files older than 7 days
+
+To manually clean up now:
+```bash
+# On headroom:
+rm -rf /tmp/staging-* /tmp/*transcode*
+
+# On loki:
+rm -rf /tmp/*transcode*
+find /mnt/incoming -type f -mtime +7 -delete  # Old downloads
+```
+
+**Check systemd timer status (headroom):**
+```bash
+sudo systemctl status cleanup-transcode-tmp.timer
+sudo systemctl list-timers cleanup-transcode-tmp.timer
+```
+
 ### No Audio in Stream
 
 Check if source has audio:
@@ -231,22 +286,67 @@ The `ch1-audio` systemd service plays CH1 audio through zikzak's analog output
 (HDA Intel PCH, `plughw:0,0`) using mpv in audio-only mode. It connects to the
 local Icecast stream at `http://localhost:8000/ch1.ts`.
 
-**No audio from the 3.5mm jack:**
+**How it works:**
+- Systemd unit: `/etc/systemd/system/ch1-audio.service` (system service, enabled)
+- Runs as user `nthmost`, group `audio`
+- mpv with `--no-video --ao=alsa --audio-device=alsa/plughw:0,0 --volume=100`
+- Source: `http://localhost:8000/ch1.ts` (local Icecast, CH1 transport stream)
+- Reconnects automatically on stream drops (up to 30s retry)
+- Waits 15 seconds before starting (`ExecStartPre=/bin/sleep 15`) to let
+  Icecast and liquidsoap come up first
+- **Automatically restarts when liquidsoap restarts** (`PartOf=zikzak-liquidsoap.service`)
+
+**ALSA mixer chain (all must be unmuted for audio output):**
+
+The ALC892 codec on the Intel PCH has multiple mixer stages in series.
+All three of these must be unmuted and at nonzero volume:
+
+| Control   | Purpose                        | Default after reboot |
+|-----------|--------------------------------|----------------------|
+| `Master`  | Global hardware master volume  | Usually on           |
+| `PCM`     | Software PCM mix level         | Usually on           |
+| `Front`   | Front (3.5mm line-out) switch  | **Often OFF**        |
+
+The `Front` channel controls the physical 3.5mm analog output and **resets to
+muted on reboot**. This is the most common cause of "service running but no
+sound."
+
+**Quick fix — unmute everything:**
 ```bash
-sudo systemctl status ch1-audio
-# If failed, restart:
-sudo systemctl restart ch1-audio
+amixer -c 0 sset Master unmute
+amixer -c 0 sset Front unmute
+amixer -c 0 sset Master 64%
+amixer -c 0 sset Front 100%
+amixer -c 0 sset PCM 98%
 ```
 
-**Volume adjustment:**
+**Persist mixer state across reboots:**
 ```bash
-# Check current levels
-amixer -c 0
-# Set master volume (0-100%)
-amixer -c 0 set Master 80%
-# Unmute if muted
-amixer -c 0 set Master unmute
+# Save current ALSA state
+sudo alsactl store
+# Verify it will restore on boot
+sudo systemctl enable alsa-restore
 ```
+
+**No audio from the 3.5mm jack — checklist:**
+1. Check the service is running:
+   ```bash
+   sudo systemctl status ch1-audio
+   # If failed, restart:
+   sudo systemctl restart ch1-audio
+   ```
+2. Check ALSA mixer — especially `Front`:
+   ```bash
+   amixer -c 0 sget Front
+   # If [off], unmute:
+   amixer -c 0 sset Front unmute
+   ```
+3. Check the physical 3.5mm cable is in the **green** jack on zikzak's
+   rear I/O panel (ALC892 line-out, not the orange/black surround jacks)
+4. Verify the audio hardware is detected:
+   ```bash
+   aplay -l | grep PCH
+   ```
 
 **ALSA device not found:** Ensure the `audio` group has access and the service
 has `Group=audio`. Verify hardware with `sudo aplay -l`.
