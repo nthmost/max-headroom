@@ -160,6 +160,7 @@ Use the **intake web app** at `https://zikzak.nthmost.net/` — paste a YouTube 
 - [System Tuning](docs/system-tuning.md) - Performance optimization
 - [Troubleshooting](docs/troubleshooting.md) - Common issues and fixes
 - [Zikzak Architecture](docs/zikzak-architecture.md) - Dual-GPU split, DRM kiosk, mhbn tunnel, Secure Boot gotchas (host-specific decisions)
+- [Testing Architecture](docs/testing-architecture.md) - unit/integration/e2e layout, loki↔headroom test-pair topology
 
 ## Services
 

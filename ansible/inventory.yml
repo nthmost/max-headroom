@@ -57,17 +57,20 @@ all:
           hls_output_path: /var/www/hls
           icecast_port: 8000
 
-    # Spare compute at Noisebridge (batch processing)
+    # Spare compute at Noisebridge — also serves as the e2e test-pair
+    # target for loki's intake pipeline (see playbooks/headroom.yml).
     compute:
       hosts:
         headroom:
           ansible_host: 10.100.0.4
           ansible_user: nthmost
           ansible_ssh_common_args: '-J zephyr'
-          # GPU: Intel UHD (VAAPI)
+          wg_client_address: 10.100.0.4
+          # GPU: Intel UHD (VAAPI) — no nvidia, no Liquidsoap.
           gpu_type: intel
           service_user: max
           service_group: max
+          media_path: /mnt/media
 
   vars:
     # Global defaults

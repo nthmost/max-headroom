@@ -1,0 +1,79 @@
+---
+# Headroom test-pair deployment.
+#
+# Configures headroom (Intel UHD, no Liquidsoap) as the e2e test target for
+# loki's intake pipeline. The setup mirrors zikzak's data plane:
+#   - max service user, /mnt/media + /mnt/dropbox + 2775 setgid
+#   - loki-pg-tunnel pointed at mhbn_test on loki (port 5436 locally to avoid
+#     colliding with anything else)
+#   - dropbox-watchdog filing into /mnt/media via the same role used on zikzak
+#
+# What it deliberately does NOT install:
+#   - postgres server (uses tunnel to loki's mhbn_test instead)
+#   - nvidia driver (this host has Intel UHD; VAAPI is fine)
+#   - liquidsoap / icecast2 / quadmux (no broadcast pipeline here)
+#
+# Usage:
+#   ansible-playbook playbooks/headroom.yml
+#   ansible-playbook playbooks/headroom.yml --tags loki-pg-tunnel
+#
+# Prereqs:
+#   - scripts/setup-mhbn-test-db.sh has been run on loki to create mhbn_test.
+#   - headroom is reachable via WG at 10.100.0.4 through zephyr.
+#   - The ansible-runner user has SSH access to headroom.
+
+- name: Configure headroom test-pair target
+  hosts: headroom
+  gather_facts: yes
+
+  vars_files:
+    - ../group_vars/vault.yml
+
+  vars:
+    # Force the test variants. These override inventory defaults that would
+    # otherwise point at the production mhbn DB / port.
+    db_name: mhbn_test
+    db_port_zikzak: 5436  # this host's local tunnel port; distinct from zikzak's 5435
+    # Tunnel still goes via zephyr; headroom doesn't talk to loki directly.
+
+  pre_tasks:
+    - name: Verify we can reach headroom
+      ansible.builtin.ping:
+
+  roles:
+    - role: bootstrap
+      vars:
+        bootstrap_install_postgres: false       # mhbn_test lives on loki
+        bootstrap_install_nvidia: false         # Intel UHD only
+        bootstrap_install_icecast2: false       # not a broadcast host
+      tags: [bootstrap]
+
+    - role: loki-pg-tunnel
+      tags: [loki-pg-tunnel, db]
+
+    - role: dropbox-watchdog
+      tags: [dropbox-watchdog, intake]
+
+  post_tasks:
+    - name: Verify watchdog is running
+      ansible.builtin.systemd:
+        name: dropbox-watchdog
+        state: started
+      become: yes
+      check_mode: yes
+      register: wd_status
+      failed_when: wd_status.status.ActiveState != "active"
+      tags: [verify]
+
+    - name: Print where to point intake tests
+      ansible.builtin.debug:
+        msg: |
+          Headroom test target is live.
+
+          From loki, run the e2e suite with:
+            export MHBN_TEST_DATABASE_URL=postgresql://mhbn:***@127.0.0.1:5432/mhbn_test
+            export HEADROOM_HOST=10.100.0.4
+            export HEADROOM_USER=nthmost
+            export HEADROOM_JUMP=zephyr
+            cd intake && python -m pytest tests/e2e -v
+      tags: [verify]
