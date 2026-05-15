@@ -26,3 +26,24 @@
       NVIDIA driver was installed. A REBOOT IS REQUIRED before nvidia-smi
       and NVENC will work. Re-run the playbook after reboot.
   when: nvidia_smi_check.rc != 0
+
+# DRM/KMS modesetting is required for direct-DRM display pipelines (e.g.
+# mpv --vo=gpu --gpu-context=drm for the quadmux kiosk on zikzak's GTX 1060).
+# Without modeset=1 the kernel rejects atomic commits with EBUSY.
+- name: Enable nvidia_drm modesetting via modprobe option
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/nvidia-drm-modeset.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Required for direct DRM/KMS display via nvidia (no X needed).
+      # Used by the quadmux-display kiosk pipeline on zikzak.
+      options nvidia_drm modeset=1 fbdev=1
+  become: yes
+  register: nvidia_drm_conf
+
+- name: Regenerate initramfs after nvidia_drm option change
+  ansible.builtin.command: update-initramfs -u
+  become: yes
+  when: nvidia_drm_conf.changed

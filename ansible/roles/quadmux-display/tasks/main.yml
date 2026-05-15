@@ -1,0 +1,151 @@
+---
+- name: Ensure mpv is installed
+  ansible.builtin.apt:
+    name: mpv
+    state: present
+  become: yes
+
+- name: Restrict Xorg to the primary GPU (free secondary for direct DRM)
+  ansible.builtin.copy:
+    dest: /etc/X11/xorg.conf.d/10-nvidia-single-gpu.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by ansible quadmux-display role.
+      # Pin Xorg to the primary GPU ({{ qm_xorg_primary_busid }}). The other
+      # GPU is reserved for the quadmux kiosk pipeline (mpv direct DRM as
+      # {{ qm_service_user }}). Without ProbeAllGpus=false, NVIDIA holds DRM
+      # master on the secondary in PRIME-sink mode and blocks mpv.
+      Section "ServerLayout"
+          Identifier "Layout0"
+          Screen     "Screen0"
+      EndSection
+      Section "ServerFlags"
+          Option "AutoAddGPU" "false"
+      EndSection
+      Section "Device"
+          Identifier "PrimaryGPU"
+          Driver     "nvidia"
+          BusID      "{{ qm_xorg_primary_busid }}"
+          Option     "ProbeAllGpus" "false"
+      EndSection
+      Section "Screen"
+          Identifier "Screen0"
+          Device     "PrimaryGPU"
+      EndSection
+  become: yes
+  when: qm_xorg_restrict_to_primary | bool
+
+- name: Ensure service-user autostart dir exists
+  ansible.builtin.file:
+    path: "/home/{{ qm_service_user }}/.config/autostart"
+    state: directory
+    owner: "{{ qm_service_user }}"
+    group: "{{ qm_service_group }}"
+    mode: '0755'
+  become: yes
+
+- name: Suppress system autostart entries for service user (kiosk hygiene)
+  ansible.builtin.copy:
+    dest: "/home/{{ qm_service_user }}/.config/autostart/{{ item }}.desktop"
+    owner: "{{ qm_service_user }}"
+    group: "{{ qm_service_group }}"
+    mode: '0644'
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Hidden=true
+      Name={{ item }}
+  loop: "{{ qm_disable_autostarts }}"
+  become: yes
+
+- name: Configure lightdm autologin for service user (kiosk mode)
+  ansible.builtin.copy:
+    dest: /etc/lightdm/lightdm.conf.d/60-autologin.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by ansible quadmux-display role.
+      # Auto-login the service user so the X session it owns lets
+      # quadmux-display.service render via DISPLAY=:0.
+      [Seat:*]
+      autologin-user={{ qm_service_user }}
+      autologin-user-timeout=0
+      user-session=xfce
+  become: yes
+  when: qm_lightdm_autologin | bool
+
+- name: Ensure autologin group exists (Ubuntu/Mint convention)
+  ansible.builtin.group:
+    name: autologin
+    state: present
+  become: yes
+  when: qm_lightdm_autologin | bool
+
+- name: Add service user to autologin group
+  ansible.builtin.user:
+    name: "{{ qm_service_user }}"
+    groups: autologin
+    append: yes
+  become: yes
+  when: qm_lightdm_autologin | bool
+
+- name: Ensure /opt scripts dir exists
+  ansible.builtin.file:
+    path: "{{ qm_opt_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: yes
+
+- name: Deploy quadmux-display script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/quadmux-display-mpv.sh"
+    dest: "{{ qm_opt_dir }}/quadmux-display-mpv.sh"
+    owner: root
+    group: root
+    mode: '0755'
+  become: yes
+  notify: Restart quadmux-display
+
+- name: Deploy quadmux-display systemd unit
+  ansible.builtin.template:
+    src: quadmux-display.service.j2
+    dest: /etc/systemd/system/quadmux-display.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify:
+    - Reload systemd
+    - Restart quadmux-display
+
+- name: Deploy ch1-audio systemd unit
+  ansible.builtin.template:
+    src: ch1-audio.service.j2
+    dest: /etc/systemd/system/ch1-audio.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify:
+    - Reload systemd
+    - Restart ch1-audio
+
+- name: Enable quadmux-display (do NOT start automatically — needs X session)
+  ansible.builtin.systemd:
+    name: quadmux-display
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+
+- name: Enable + start ch1-audio (no X dep)
+  ansible.builtin.systemd:
+    name: ch1-audio
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: yes

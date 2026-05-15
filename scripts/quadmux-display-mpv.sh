@@ -1,21 +1,26 @@
 #!/bin/bash
-# Quad-mux display using mpv lavfi-complex
-# Composites 4 icecast channels into a 2x2 grid on HDMI display
+# Quad-mux display using mpv lavfi-complex.
+# Composites 4 icecast channels into a 2x2 grid on the secondary GPU's HDMI
+# output via direct DRM/KMS (no X server). Requires nvidia_drm.modeset=1.
 #
-# Deployed to: /home/max/bin/quadmux-display-mpv.sh on zikzak
-# Managed by:  ~/.config/systemd/user/quadmux-display.service (Restart=always)
+# Deployed to: /opt/max-headroom/bin/quadmux-display-mpv.sh
+# Managed by:  /etc/systemd/system/quadmux-display.service (Restart=always)
+#
+# Environment (set by the systemd unit):
+#   CUDA_VISIBLE_DEVICES — GPU index for NVDEC (pin decode to the kiosk GPU)
+#   QM_DRM_DEVICE        — /dev/dri/cardN of the kiosk GPU
+#   QM_DRM_CONNECTOR     — DRM connector name (e.g. HDMI-A-2)
+#   QM_DRM_MODE          — output mode (e.g. 1920x1080)
 #
 # Robustness notes:
-# - reconnect_delay_max=120: survives full liquidsoap restarts (which take 30-60s)
+# - reconnect_delay_max=120: survives full liquidsoap restarts (30-60s).
 # - Do NOT use --profile=low-latency: sets stream-buffer-size=4k which causes
-#   lavfi-complex to freeze at track boundaries (PTS discontinuities)
-# - IPC watchdog removed: at 76% CPU (nvdec-copy), mpv cannot service IPC within
-#   the 3s socat timeout, triggering false "unresponsive" kills on healthy playback.
-#   Liquidsoap is now stable (random() sources, no random_pick crash), so systemd
-#   Restart=always is sufficient recovery without an application-level watchdog.
+#   lavfi-complex to freeze at track boundaries (PTS discontinuities).
 
-export DISPLAY=:0
-export XDG_RUNTIME_DIR=/run/user/1002
+set -u
+QM_DRM_DEVICE="${QM_DRM_DEVICE:-/dev/dri/card2}"
+QM_DRM_CONNECTOR="${QM_DRM_CONNECTOR:-HDMI-A-2}"
+QM_DRM_MODE="${QM_DRM_MODE:-1920x1080}"
 
 # Wait up to 2 minutes for streams to be available
 echo "Waiting for streams..."
@@ -29,10 +34,13 @@ done
 
 sleep 3
 
-mpv \
+exec mpv \
     --no-terminal \
-    --fs \
     --vo=gpu \
+    --gpu-context=drm \
+    --drm-device="${QM_DRM_DEVICE}" \
+    --drm-connector="${QM_DRM_CONNECTOR}" \
+    --drm-mode="${QM_DRM_MODE}" \
     --hwdec=nvdec-copy \
     --ao=null \
     --video-sync=desync \

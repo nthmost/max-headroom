@@ -1,0 +1,23 @@
+[Unit]
+Description=Quadmux 2x2 kiosk on {{ qm_drm_connector }} (direct DRM, no X)
+After=zikzak-liquidsoap.service icecast2.service
+Wants=zikzak-liquidsoap.service
+
+[Service]
+Type=simple
+User={{ qm_service_user }}
+Group={{ qm_service_group }}
+SupplementaryGroups=video render
+ExecStart={{ qm_opt_dir }}/quadmux-display-mpv.sh
+Restart=always
+RestartSec=10
+# Pin NVDEC decode to GPU index {{ qm_decode_gpu }} (the secondary card on
+# zikzak — same GPU as the DRM connector below, so decode + present stay
+# co-resident on one GPU).
+Environment=CUDA_VISIBLE_DEVICES={{ qm_decode_gpu }}
+Environment=QM_DRM_DEVICE={{ qm_drm_device }}
+Environment=QM_DRM_CONNECTOR={{ qm_drm_connector }}
+Environment=QM_DRM_MODE={{ qm_drm_mode }}
+
+[Install]
+WantedBy=multi-user.target

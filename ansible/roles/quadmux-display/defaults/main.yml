@@ -1,0 +1,48 @@
+---
+# quadmux-display: composites the 4 local icecast channels into a 2x2 grid
+# on the HDMI display. NVDEC decode pinned to the secondary GPU (GTX 1060)
+# via CUDA_VISIBLE_DEVICES=1 so encoder workload on GPU 0 (GTX 1080) stays
+# uncontended. Display rendering happens via Xorg on whichever GPU drives
+# the connected HDMI output; nvdec-copy moves frames out of GPU 1 to system
+# memory before display, so this works regardless of which GPU has the HDMI.
+
+qm_service_user: "{{ service_user | default('max') }}"
+qm_service_group: "{{ service_group | default('max') }}"
+
+# UID-dependent runtime dir. Set per-host in inventory if max's uid differs.
+qm_service_uid: "{{ service_uid | default(1001) }}"
+
+# Where the scripts live on target hosts. /opt is preferred over per-user dirs
+# so the same path works regardless of which service-user maps to which uid.
+qm_opt_dir: /opt/max-headroom/bin
+
+# GPU index for NVDEC (0-indexed). nvidia-smi shows GPU 1 = GTX 1060 on zikzak.
+qm_decode_gpu: 1
+
+# Local icecast (liquidsoap output)
+qm_stream_base: http://localhost:8000
+
+# ch1 audio out — separate service that drives the analog jack
+qm_ch1_audio_device: "alsa/plughw:0,0"
+
+# Auto-login service user on console (kiosk mode). Required for quadmux-display
+# because mpv --vo=gpu needs an X session owned by qm_service_user.
+qm_lightdm_autologin: true
+
+# Display routing — quadmux uses direct DRM/KMS on the secondary GPU so the
+# primary GPU stays free for admin desktop. Set these to match physical wiring.
+qm_drm_device: /dev/dri/card2
+qm_drm_connector: HDMI-A-2
+qm_drm_mode: "1920x1080"
+qm_drm_busid: "PCI:2:0:0"
+
+# Pin Xorg to the PRIMARY GPU (admin desktop). Without this, NVIDIA's driver
+# auto-probes both GPUs and holds DRM master on the secondary, blocking mpv.
+qm_xorg_primary_busid: "PCI:1:0:0"
+qm_xorg_restrict_to_primary: true
+
+# Disable Mint autostart entries that pop up on max's kiosk session.
+qm_disable_autostarts:
+  - mintupdate
+  - warpinator-autostart
+  - user-dirs-update-gtk

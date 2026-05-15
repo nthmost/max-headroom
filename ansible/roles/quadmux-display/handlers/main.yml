@@ -1,0 +1,19 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  become: yes
+
+- name: Restart quadmux-display
+  ansible.builtin.systemd:
+    name: quadmux-display
+    state: restarted
+  become: yes
+  # Allow failure: needs an X session (max logged in); ok if not running yet.
+  ignore_errors: yes
+
+- name: Restart ch1-audio
+  ansible.builtin.systemd:
+    name: ch1-audio
+    state: restarted
+  become: yes

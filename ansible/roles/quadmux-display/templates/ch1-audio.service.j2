@@ -1,0 +1,27 @@
+[Unit]
+Description=CH1 audio output to {{ qm_ch1_audio_device }}
+After=icecast2.service zikzak-liquidsoap.service
+Wants=zikzak-liquidsoap.service
+PartOf=zikzak-liquidsoap.service
+
+[Service]
+User={{ qm_service_user }}
+Group=audio
+Environment=DISPLAY=
+ExecStartPre=/bin/sleep 15
+ExecStart=/usr/bin/mpv \
+    --no-video \
+    --ao=alsa \
+    --audio-device={{ qm_ch1_audio_device }} \
+    --volume=100 \
+    --stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=30 \
+    --idle=yes \
+    --force-seekable=no \
+    --cache=yes \
+    --demuxer-max-bytes=512KiB \
+    {{ qm_stream_base }}/ch1.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
