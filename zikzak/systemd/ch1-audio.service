@@ -2,6 +2,8 @@
 Description=CH1 audio output to 3.5mm jack
 After=icecast2.service zikzak-liquidsoap.service
 Wants=zikzak-liquidsoap.service
+PartOf=zikzak-liquidsoap.service
+# PartOf ensures this service restarts when liquidsoap restarts
 # Starts after liquidsoap + icecast; the quadmux display is a user service
 # under max and will also be running by this point.
 
