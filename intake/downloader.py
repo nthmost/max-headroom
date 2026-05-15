@@ -435,217 +435,299 @@ def _ssh_zikzak(cmd_str, timeout=30):
     return result.returncode, result.stdout, result.stderr
 
 
-def purge_job_files(job):
+class _PurgeResult:
+    """Accumulator for the deleted/errors/not_found buckets of a purge run."""
+
+    def __init__(self) -> None:
+        self.deleted: list[str] = []
+        self.errors: list[str] = []
+        self.not_found: list[str] = []
+
+    def as_dict(self) -> dict:
+        return {"deleted": self.deleted, "errors": self.errors, "not_found": self.not_found}
+
+
+def _purge_remote_file(result: "_PurgeResult", path: str) -> None:
+    """Delete a single file on zikzak; record outcome in `result`."""
+    rc, _, err = _ssh_zikzak(f"rm -f {shlex.quote(path)}")
+    if rc == 0:
+        result.deleted.append(f"zikzak:{path}")
+    else:
+        result.errors.append(f"zikzak rm {path}: {err.strip()}")
+
+
+def _purge_remote_glob(result: "_PurgeResult", directory: str, pattern: str) -> None:
+    """Find files matching `pattern` in `directory` on zikzak; delete each."""
+    find_cmd = f"find {shlex.quote(directory)} -maxdepth 1 -type f -name {shlex.quote(pattern)}"
+    rc, stdout, _ = _ssh_zikzak(find_cmd)
+    if rc != 0 or not stdout.strip():
+        result.not_found.append(f"zikzak:{directory}/{pattern}")
+        return
+    for path in stdout.strip().splitlines():
+        _purge_remote_file(result, path.strip())
+
+
+def _purge_local_file(result: "_PurgeResult", path: str) -> None:
+    """Delete a single local file; record outcome in `result`."""
+    if not os.path.exists(path):
+        result.not_found.append(f"local:{path}")
+        return
+    try:
+        os.remove(path)
+    except OSError as exc:
+        result.errors.append(f"local rm {path}: {exc}")
+        return
+    result.deleted.append(f"local:{path}")
+
+
+def _purge_local_by_title_glob(result: "_PurgeResult", directory: str, title_pat: str) -> None:
+    """Scan `directory` and remove files whose names start with `title_pat`."""
+    try:
+        entries = list(os.scandir(directory))
+    except OSError:
+        return  # dir missing is fine — nothing to do
+    for entry in entries:
+        if entry.is_file() and re.match(title_pat, entry.name):
+            _purge_local_file(result, entry.path)
+
+
+def _ia_local_dirs(category: str, length: str) -> tuple[str, str]:
+    """Return (incoming_dir, transcoded_dir) on loki for an IA job."""
+    incoming = os.path.join(INCOMING_DIR, category, length)
+    transcoded = os.path.join(
+        os.environ.get("TRANSCODED_DIR", "/mnt/media_transcoded"), category, length
+    )
+    return incoming, transcoded
+
+
+def _purge_ia_job(result: "_PurgeResult", job: dict, remote_dir: str, glob_pat: str | None) -> None:
+    """Purge IA-source files: raw on incoming + transcoded locally + zikzak."""
+    filename = job.get("filename")
+    incoming_dir, transcoded_dir = _ia_local_dirs(job["category"], job["length"])
+    if filename:
+        _purge_local_file(result, os.path.join(incoming_dir, filename))
+        stem = os.path.splitext(filename)[0]
+        _purge_local_file(result, os.path.join(transcoded_dir, stem + ".mp4"))
+        if glob_pat:
+            _purge_remote_glob(result, remote_dir, stem + ".mp4")
+        return
+    if not glob_pat:
+        return
+    title_pat = re.escape(_yt_restrict(job.get("title") or ""))
+    for d in (incoming_dir, transcoded_dir):
+        _purge_local_by_title_glob(result, d, title_pat)
+    _purge_remote_glob(result, remote_dir, glob_pat)
+
+
+def _purge_yt_job(result: "_PurgeResult", remote_dir: str, filename: str | None, glob_pat: str | None) -> None:
+    """Purge a YouTube job's files (only live on zikzak; staging is gone)."""
+    if filename:
+        _purge_remote_file(result, f"{remote_dir}/{filename}")
+    elif glob_pat:
+        _purge_remote_glob(result, remote_dir, glob_pat)
+
+
+def _purge_glob_for(job: dict) -> str | None:
+    """If filename is known, glob is the filename; else derive from title."""
+    if job.get("filename"):
+        return job["filename"]
+    stem = _yt_restrict(job.get("title") or "")
+    return stem + ".*" if stem else None
+
+
+def purge_job_files(job: dict) -> dict:
     """
-    Delete all on-disk/remote files for a job and regenerate zikzak playlists.
+    Delete all on-disk/remote files for a job. Liquidsoap's inotify watcher
+    picks up the removal — no playlist regen needed.
     Returns {'deleted': [...], 'errors': [...], 'not_found': [...]}.
     """
-    deleted, errors, not_found = [], [], []
-    category = job["category"]
-    length = job["length"]
-    filename = job.get("filename")
-
-    # If we have an exact filename, use it; otherwise build a glob from the title.
-    if filename:
-        glob_pat = filename
-    else:
-        stem = _yt_restrict(job.get("title") or "")
-        glob_pat = stem + ".*" if stem else None
-
-    remote_dir = f"{ZIKZAK_MEDIA}/{category}/{length}"
-
-    def _delete_remote(path):
-        rc, _, err = _ssh_zikzak(f"rm -f {shlex.quote(path)}")
-        if rc == 0:
-            deleted.append(f"zikzak:{path}")
-        else:
-            errors.append(f"zikzak rm {path}: {err.strip()}")
-
-    def _delete_remote_glob(directory, pattern):
-        """Find files matching pattern in directory on zikzak, delete them."""
-        find_cmd = f"find {shlex.quote(directory)} -maxdepth 1 -type f -name {shlex.quote(pattern)}"
-        rc, stdout, _ = _ssh_zikzak(find_cmd)
-        if rc != 0 or not stdout.strip():
-            not_found.append(f"zikzak:{directory}/{pattern}")
-            return
-        for path in stdout.strip().splitlines():
-            _delete_remote(path.strip())
-
-    def _delete_local(path):
-        try:
-            if os.path.exists(path):
-                os.remove(path)
-                deleted.append(f"local:{path}")
-            else:
-                not_found.append(f"local:{path}")
-        except OSError as e:
-            errors.append(f"local rm {path}: {e}")
-
+    result = _PurgeResult()
+    remote_dir = f"{ZIKZAK_MEDIA}/{job['category']}/{job['length']}"
+    glob_pat = _purge_glob_for(job)
     if job["source"] == "ia":
-        # IA: raw lives locally on loki at INCOMING_DIR (may also be in /mnt/incoming if
-        # process-incoming.sh has not run yet), transcoded locally then rsynced to zikzak.
-        incoming_dir = os.path.join(INCOMING_DIR, category, length)
-        transcoded_dir = os.path.join(
-            os.environ.get("TRANSCODED_DIR", "/mnt/media_transcoded"), category, length
+        _purge_ia_job(result, job, remote_dir, glob_pat)
+    else:
+        _purge_yt_job(result, remote_dir, job.get("filename"), glob_pat)
+    return result.as_dict()
+
+
+def _build_job_command(job: dict, crop_sides: bool) -> list[str]:
+    """Dispatch a job dict to the right pipeline-command builder."""
+    if job["source"] == "ia":
+        return _build_ia_pipeline_cmd(
+            job["id"], job["url"], job["category"], job["length"], crop_sides=crop_sides
         )
-
-        if filename:
-            _delete_local(os.path.join(incoming_dir, filename))
-            stem = os.path.splitext(filename)[0]
-            _delete_local(os.path.join(transcoded_dir, stem + ".mp4"))
-            if glob_pat:
-                _delete_remote_glob(remote_dir, stem + ".mp4")
-        elif glob_pat:
-            # Best-effort: glob in each local dir
-            for d in [incoming_dir, transcoded_dir]:
-                try:
-                    for entry in os.scandir(d):
-                        if entry.is_file() and re.match(
-                            re.escape(_yt_restrict(job.get("title") or "")), entry.name
-                        ):
-                            _delete_local(entry.path)
-                except OSError:
-                    pass
-            _delete_remote_glob(remote_dir, glob_pat)
-    else:
-        # YouTube: file lives only on zikzak (rsync'd from loki staging, now gone)
-        if filename:
-            _delete_remote(f"{remote_dir}/{filename}")
-        elif glob_pat:
-            _delete_remote_glob(remote_dir, glob_pat)
-
-    # No playlist regen — liquidsoap uses inotify (reload_mode="watch") so
-    # source listings update automatically when files are added/removed.
-
-    return {"deleted": deleted, "errors": errors, "not_found": not_found}
+    return _build_loki_yt_cmd(
+        job["url"], job["category"], job["length"], job["id"], crop_sides=crop_sides
+    )
 
 
-def run_job(job):
-    """
-    Execute a download job. Blocks until complete.
-
-    All paths:
-      1. Download the raw file (yt-dlp on loki, or ia CLI locally)
-      2. Transcode to 960x540 H.264 on loki (NVENC on RTX 4080 by default;
-         VAAPI fallback selectable via HW_ACCEL env var)
-      3. rsync transcoded file to zikzak:/mnt/dropbox/<job_id>__<filename>.mp4
-      4. Watchdog on zikzak validates and files into /mnt/media/<cat>/<len>/
-         and sets pipeline_status='live' (or 'rejected') in mhbn.
-
-    YouTube: steps 1-3 happen in a single SSH session on loki.
-    IA: step 1 runs locally, steps 2-3 via a local transcode + rsync.
-    """
-    job_id = job["id"]
-    log_path = _log_path(job_id)
-
-    crop_sides = bool(job.get("crop_sides", 0))
-
-    if job["source"] == "ia":
-        cmd = _build_ia_pipeline_cmd(job_id, job["url"], job["category"],
-                                      job["length"], crop_sides=crop_sides)
-    else:
-        cmd = _build_loki_yt_cmd(job["url"], job["category"], job["length"], job_id,
-                                  crop_sides=crop_sides)
-
+def _spawn_job_subprocess(cmd: list[str], log_path: str, job: dict) -> int:
+    """Run the job command, streaming output to log_path. Returns the exit code."""
     with open(log_path, "w") as logfh:
-        logfh.write(f"# Job {job_id}: {job['url']}\n")
+        logfh.write(f"# Job {job['id']}: {job['url']}\n")
         logfh.write(f"# cmd: {' '.join(cmd)}\n\n")
         logfh.flush()
+        proc = subprocess.Popen(cmd, stdout=logfh, stderr=subprocess.STDOUT, text=True)
+        db.set_pid(job["id"], proc.pid, log_path)
+        return proc.wait()
 
-        proc = subprocess.Popen(
-            cmd, stdout=logfh, stderr=subprocess.STDOUT, text=True
-        )
-        db.set_pid(job_id, proc.pid, log_path)
-        returncode = proc.wait()
 
+def _canonical_filename_from_log(log_path: str) -> str | None:
+    """Parse the run log for the output filename and normalize to <stem>.mp4."""
+    raw = _parse_log_for_filename(log_path)
+    if not raw:
+        return None
+    # The dropbox file is prefixed with job_id; strip that for the DB.
+    m = re.match(r'^\d+__(.+)$', raw)
+    if m:
+        raw = m.group(1)
+    return os.path.splitext(raw)[0] + ".mp4"
+
+
+def _record_success(job_id: int, log_path: str) -> None:
+    """Mark done; persist the resolved filename if we can extract one."""
+    filename = _canonical_filename_from_log(log_path)
+    if filename:
+        db.set_filename(job_id, filename)
+    db.mark_done(job_id)
+
+
+def _last_log_line(log_path: str) -> str:
+    """Return the last non-blank line of log_path, or '' if unreadable."""
+    try:
+        with open(log_path) as f:
+            lines = [l.strip() for l in f if l.strip()]
+    except OSError:
+        return ""
+    return lines[-1] if lines else ""
+
+
+def _record_failure(job_id: int, log_path: str) -> None:
+    """Mark failed with the last log line as the error message."""
+    db.mark_failed(job_id, _last_log_line(log_path))
+
+
+def run_job(job: dict) -> None:
+    """
+    Execute one download job, blocking until it completes.
+
+    Pipeline (both sources):
+      1. Download raw (yt-dlp on loki via SSH, or `ia` CLI locally on loki).
+      2. Transcode to 960x540 H.264 — NVENC on RTX 4080 by default;
+         VAAPI fallback via HW_ACCEL env var.
+      3. rsync transcoded file to zikzak:/mnt/dropbox/<job_id>__<file>.mp4.
+      4. Dropbox watchdog validates, files into /mnt/media/<cat>/<len>/, and
+         sets pipeline_status='live' (or 'rejected') in mhbn.
+    """
+    log_path = _log_path(job["id"])
+    cmd = _build_job_command(job, crop_sides=bool(job.get("crop_sides", 0)))
+    returncode = _spawn_job_subprocess(cmd, log_path, job)
     if returncode == 0:
-        filename = _parse_log_for_filename(log_path)
-        if filename:
-            # The dropbox file is prefixed with job_id; strip that for the DB
-            m = re.match(r'^\d+__(.+)$', filename)
-            if m:
-                filename = m.group(1)
-            # Ensure .mp4 extension (transcode always produces mp4)
-            stem = os.path.splitext(filename)[0]
-            filename = stem + ".mp4"
-            db.set_filename(job_id, filename)
-        db.mark_done(job_id)
+        _record_success(job["id"], log_path)
     else:
-        error_msg = ""
-        try:
-            with open(log_path) as f:
-                lines = [l.strip() for l in f if l.strip()]
-                error_msg = lines[-1] if lines else ""
-        except OSError:
-            pass
-        db.mark_failed(job_id, error_msg)
+        _record_failure(job["id"], log_path)
 
 
-def _build_loki_yt_cmd(url, category, length, job_id, crop_sides=False):
-    """
-    SSH to loki, download via yt-dlp to a staging dir, transcode to 960x540
-    H.264, then rsync the transcoded file to zikzak's dropbox.
-    The dropbox watchdog on zikzak handles validation and filing.
+# ─── Shell-snippet helpers (shared between YT and IA pipelines) ──────────────
+#
+# Each helper returns a fragment of bash. They take variable-name strings
+# (e.g. "$_src", "$_out") rather than Python values because the surrounding
+# script defines those vars at runtime via shell expansion.
 
-    The output filename is prefixed with the job_id so the watchdog can
-    look up category/length from the DB: <job_id>__<filename>.mp4
-    """
-    staging = f"/tmp/intake_{job_id}"
-    transcoded = f"{staging}/transcoded"
-    dropbox = ZIKZAK_DROPBOX
-    ssh_to_zikzak = f"ssh -o StrictHostKeyChecking=no -J {ZIKZAK_JUMP}"
+def _ssh_to_zikzak_prefix() -> str:
+    """SSH command prefix used for the zikzak push leg (jumphost-aware)."""
+    return f"ssh -o StrictHostKeyChecking=no -J {ZIKZAK_JUMP}"
 
-    vf, enc, hw_init = _transcode_cmd_parts(crop_sides)
 
-    script = (
-        f"set -e && "
-        f"export PATH=$PATH:$HOME/.deno/bin && "
-        f"mkdir -p {staging} {transcoded} && "
-        # Step 1: Download
+def _ffprobe_has_audio_bash(src_var: str) -> str:
+    """Bash expression that's empty when `src_var` has no audio stream."""
+    return (
+        f"$(ffprobe -v error -select_streams a "
+        f"-show_entries stream=codec_type -of csv=p=0 \"{src_var}\" 2>/dev/null | head -1)"
+    )
+
+
+def _ffmpeg_transcode_bash(
+    hw_init: str, vf: str, enc: str,
+    src_var: str, out_var: str, has_audio_var: str,
+) -> str:
+    """Bash if/else: ffmpeg with silent-audio fallback when src has no audio."""
+    common = f"ffmpeg -hide_banner -loglevel error -nostdin -y {hw_init} -i \"{src_var}\""
+    audio_pad = "-f lavfi -i anullsrc=r=44100:cl=stereo"
+    map_silent = "-map 0:v -map 1:a -c:a aac -b:a 128k -ar 44100 -shortest"
+    map_native = "-map 0:v -map 0:a -c:a aac -b:a 128k -ar 44100 -ac 2"
+    tail = f"-movflags +faststart \"{out_var}\""
+    return (
+        f"if [ -z \"{has_audio_var}\" ]; then "
+        f"{common} {audio_pad} -vf '{vf}' {enc} {map_silent} {tail}; "
+        f"else "
+        f"{common} -vf '{vf}' {enc} {map_native} {tail}; "
+        f"fi"
+    )
+
+
+def _rsync_to_dropbox_bash(local_path_expr: str) -> str:
+    """Bash chunk that ensures dropbox exists and rsyncs the local path into it."""
+    ssh = _ssh_to_zikzak_prefix()
+    return (
+        f"{ssh} {ZIKZAK_USER}@{ZIKZAK_HOST} 'mkdir -p {ZIKZAK_DROPBOX}' && "
+        f"rsync -av --no-group -e '{ssh}' "
+        f"{local_path_expr} {ZIKZAK_USER}@{ZIKZAK_HOST}:{ZIKZAK_DROPBOX}/"
+    )
+
+
+# ─── Per-source pipeline command builders ────────────────────────────────────
+
+def _yt_download_bash(url: str, staging: str) -> str:
+    """yt-dlp invocation that puts a single video into `staging`."""
+    return (
         f"{LOKI_YT_DLP} -f bestvideo+bestaudio/best --no-playlist "
         f"--restrict-filenames --cookies {LOKI_COOKIES} "
         f"--remote-components ejs:github "
-        f"-o '{staging}/%(title)s.%(ext)s' '{url}' && "
-        # Step 2: Find downloaded file
+        f"-o '{staging}/%(title)s.%(ext)s' '{url}'"
+    )
+
+
+def _yt_resolve_paths_bash(staging: str, transcoded: str, job_id: int) -> str:
+    """Bash that sets _src/_base/_stem/_out/_has_audio for the downloaded file."""
+    return (
         f"_src=$(find {staging} -maxdepth 1 -type f | head -1) && "
         f"_base=$(basename \"$_src\") && "
         f"_stem=${{_base%.*}} && "
         f"_out={transcoded}/{job_id}__${{_stem}}.mp4 && "
-        # Step 3: Check for audio
-        f"_has_audio=$(ffprobe -v error -select_streams a "
-        f"-show_entries stream=codec_type -of csv=p=0 \"$_src\" 2>/dev/null | head -1) && "
-        # Step 4: Transcode
-        f"if [ -z \"$_has_audio\" ]; then "
-        f"  ffmpeg -hide_banner -loglevel error -nostdin -y "
-        f"    {hw_init} "
-        f"    -i \"$_src\" "
-        f"    -f lavfi -i anullsrc=r=44100:cl=stereo "
-        f"    -vf '{vf}' "
-        f"    {enc} "
-        f"    -map 0:v -map 1:a -c:a aac -b:a 128k -ar 44100 -shortest "
-        f"    -movflags +faststart \"$_out\"; "
-        f"else "
-        f"  ffmpeg -hide_banner -loglevel error -nostdin -y "
-        f"    {hw_init} "
-        f"    -i \"$_src\" "
-        f"    -vf '{vf}' "
-        f"    {enc} "
-        f"    -map 0:v -map 0:a -c:a aac -b:a 128k -ar 44100 -ac 2 "
-        f"    -movflags +faststart \"$_out\"; "
-        f"fi && "
-        # Step 5: Validate output exists and is nonzero
-        f"test -s \"$_out\" && "
-        # Step 6: Push to zikzak dropbox
-        f"{ssh_to_zikzak} {ZIKZAK_USER}@{ZIKZAK_HOST} 'mkdir -p {dropbox}' && "
-        f"rsync -av --no-group -e '{ssh_to_zikzak}' "
-        f"\"$_out\" {ZIKZAK_USER}@{ZIKZAK_HOST}:{dropbox}/ && "
-        # Step 7: Clean up
-        f"rm -rf {staging}"
+        f"_has_audio={_ffprobe_has_audio_bash('$_src')}"
     )
+
+
+def _build_loki_yt_cmd(url: str, category: str, length: str, job_id: int,
+                       crop_sides: bool = False) -> list[str]:
+    """
+    Build the SSH-to-loki command that downloads a YT video, transcodes to
+    960x540 H.264, and pushes the result to zikzak's dropbox. The dropbox
+    watchdog on zikzak files it into /mnt/media/<cat>/<len>/.
+
+    Output filename is prefixed with the job_id so the watchdog can look
+    up category/length from mhbn: <job_id>__<filename>.mp4
+    """
+    staging = f"/tmp/intake_{job_id}"
+    transcoded = f"{staging}/transcoded"
+    vf, enc, hw_init = _transcode_cmd_parts(crop_sides)
+    script = " && ".join([
+        "set -e",
+        "export PATH=$PATH:$HOME/.deno/bin",
+        f"mkdir -p {staging} {transcoded}",
+        _yt_download_bash(url, staging),
+        _yt_resolve_paths_bash(staging, transcoded, job_id),
+        _ffmpeg_transcode_bash(hw_init, vf, enc, "$_src", "$_out", "$_has_audio"),
+        "test -s \"$_out\"",
+        _rsync_to_dropbox_bash("\"$_out\""),
+        f"rm -rf {staging}",
+    ])
     return ["ssh", "-o", "StrictHostKeyChecking=no", LOKI_HOST, script]
 
 
-def _build_ia_cmd(identifier, dest_dir):
+def _build_ia_cmd(identifier: str, dest_dir: str) -> list[str]:
     """Legacy: download IA files to a local directory (no transcode)."""
     ia_bin = shutil.which("ia") or "ia"
     return [
@@ -657,65 +739,47 @@ def _build_ia_cmd(identifier, dest_dir):
     ]
 
 
-def _build_ia_pipeline_cmd(job_id, identifier, category, length, crop_sides=False):
-    """
-    Full IA pipeline: download locally, transcode, push to zikzak dropbox.
-    Runs as a bash script locally on loki (the intake host).
-    """
-    staging = f"/tmp/intake_{job_id}"
-    transcoded = f"{staging}/transcoded"
-    dropbox = ZIKZAK_DROPBOX
-    ssh_to_zikzak = f"ssh -o StrictHostKeyChecking=no -J {ZIKZAK_JUMP}"
+def _ia_download_bash(identifier: str, raw_dir: str) -> str:
+    """ia CLI invocation that downloads all video files into `raw_dir`."""
     ia_bin = shutil.which("ia") or "ia"
+    return (
+        f"{ia_bin} download {shlex.quote(identifier)} "
+        f"--glob='*.mp4' --glob='*.avi' --glob='*.mkv' "
+        f"--glob='*.ogv' --glob='*.webm' "
+        f"--no-directories --destdir={raw_dir} --ignore-existing"
+    )
 
+
+def _ia_per_file_loop_bash(raw_dir: str, transcoded: str, job_id: int,
+                           hw_init: str, vf: str, enc: str) -> str:
+    """Bash for-loop: transcode each downloaded file into `transcoded`."""
+    transcode = _ffmpeg_transcode_bash(hw_init, vf, enc, "$_src", "$_out", "$_has_audio")
+    return (
+        f"for _src in {raw_dir}/*; do "
+        f"  [ -f \"$_src\" ] || continue; "
+        f"  _base=$(basename \"$_src\"); "
+        f"  _stem=\"${{_base%.*}}\"; "
+        f"  _out=\"{transcoded}/{job_id}__${{_stem}}.mp4\"; "
+        f"  _has_audio={_ffprobe_has_audio_bash('$_src')}; "
+        f"  {transcode}; "
+        f"  test -s \"$_out\" || {{ echo \"Transcode failed: $_base\"; exit 1; }}; "
+        f"done"
+    )
+
+
+def _build_ia_pipeline_cmd(job_id: int, identifier: str, category: str, length: str,
+                           crop_sides: bool = False) -> list[str]:
+    """Full IA pipeline as a single bash -c script run locally on loki."""
+    staging = f"/tmp/intake_{job_id}"
+    raw_dir = f"{staging}/raw"
+    transcoded = f"{staging}/transcoded"
     vf, enc, hw_init = _transcode_cmd_parts(crop_sides)
-
-    script = f"""set -e
-mkdir -p {staging}/raw {transcoded}
-
-# Step 1: Download from Internet Archive
-{ia_bin} download {shlex.quote(identifier)} \
-    --glob='*.mp4' --glob='*.avi' --glob='*.mkv' --glob='*.ogv' --glob='*.webm' \
-    --no-directories --destdir={staging}/raw --ignore-existing
-
-# Step 2: Transcode each file
-for _src in {staging}/raw/*; do
-    [ -f "$_src" ] || continue
-    _base=$(basename "$_src")
-    _stem="${{_base%.*}}"
-    _out="{transcoded}/{job_id}__${{_stem}}.mp4"
-
-    _has_audio=$(ffprobe -v error -select_streams a \
-        -show_entries stream=codec_type -of csv=p=0 "$_src" 2>/dev/null | head -1)
-
-    if [ -z "$_has_audio" ]; then
-        ffmpeg -hide_banner -loglevel error -nostdin -y \
-            {hw_init} \
-            -i "$_src" \
-            -f lavfi -i anullsrc=r=44100:cl=stereo \
-            -vf '{vf}' \
-            {enc} \
-            -map 0:v -map 1:a -c:a aac -b:a 128k -ar 44100 -shortest \
-            -movflags +faststart "$_out"
-    else
-        ffmpeg -hide_banner -loglevel error -nostdin -y \
-            {hw_init} \
-            -i "$_src" \
-            -vf '{vf}' \
-            {enc} \
-            -map 0:v -map 0:a -c:a aac -b:a 128k -ar 44100 -ac 2 \
-            -movflags +faststart "$_out"
-    fi
-
-    test -s "$_out" || {{ echo "Transcode failed: $_base"; exit 1; }}
-done
-
-# Step 3: Push to zikzak dropbox
-{ssh_to_zikzak} {ZIKZAK_USER}@{ZIKZAK_HOST} 'mkdir -p {dropbox}'
-rsync -av --no-group -e '{ssh_to_zikzak}' \
-    {transcoded}/ {ZIKZAK_USER}@{ZIKZAK_HOST}:{dropbox}/
-
-# Step 4: Clean up
-rm -rf {staging}
-"""
+    script = " && ".join([
+        "set -e",
+        f"mkdir -p {raw_dir} {transcoded}",
+        _ia_download_bash(identifier, raw_dir),
+        _ia_per_file_loop_bash(raw_dir, transcoded, job_id, hw_init, vf, enc),
+        _rsync_to_dropbox_bash(f"{transcoded}/"),
+        f"rm -rf {staging}",
+    ])
     return ["bash", "-c", script]

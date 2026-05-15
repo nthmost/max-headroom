@@ -129,88 +129,132 @@ def api_analyze():
         return jsonify(error=str(exc)), 500
 
 
-@app.route("/api/submit", methods=["POST"])
-def api_submit():
-    data = request.get_json(force=True)
+_SLUG_RE = re.compile(r'^[a-z][a-z0-9_]*$')
 
-    source = data.get("source")          # 'youtube', 'ia', 'playlist_file'
-    urls = data.get("urls", [])          # list of URL strings
-    category = data.get("category", "")
-    length = data.get("length", "auto")  # 'auto', 'short', 'medium', 'long'
-    is_playlist = data.get("playlist", False)
-    crop_sides = bool(data.get("crop_sides", False))
-    tags = [t for t in (data.get("tags") or []) if re.match(r'^[a-z][a-z0-9_]*$', t)]
 
+class _SubmitError(ValueError):
+    """Raised inside _create_* helpers; the handler converts it to a 400."""
+
+
+def _validate_submit_params(source: str, category: str, length: str, urls: list) -> tuple | None:
+    """Return a (jsonify, status) error tuple or None if everything's valid."""
     if source not in ("youtube", "ia", "playlist_file"):
         return jsonify(error="source must be youtube, ia, or playlist_file"), 400
-    if not re.match(r'^[a-z][a-z0-9_]*$', category):
+    if not _SLUG_RE.match(category or ""):
         return jsonify(error=f"invalid category name: {category}"), 400
     if length not in ("auto", *LENGTHS):
         return jsonify(error="length must be auto, short, medium, or long"), 400
     if not urls:
         return jsonify(error="no urls provided"), 400
+    return None
 
+
+def _ensure_category_and_tags(category: str, tags: list[str]) -> None:
+    """Idempotent: create the user-category and any new tags if needed."""
     if category not in db.get_all_categories():
         db.add_user_category(category)
     if tags:
         db.ensure_tags_exist(tags)
 
-    job_ids = []
 
-    for url in urls:
-        url = url.strip()
+def _resolved_length(requested: str, duration_seconds: int | None) -> str:
+    """If the user picked 'auto', classify by duration; else honour their choice."""
+    return classify_length(duration_seconds) if requested == "auto" else requested
+
+
+def _create_yt_playlist_jobs(url: str, category: str, length: str,
+                             crop_sides: bool, tags: list[str]) -> list[int]:
+    """Expand a YouTube playlist URL into one job per video. May raise _SubmitError."""
+    entries = downloader.expand_youtube_playlist(url)
+    if not entries:
+        raise _SubmitError(f"could not expand playlist: {url}")
+    return [
+        db.insert_job(video_url, title, "youtube", category,
+                      _resolved_length(length, duration), crop_sides, tags)
+        for video_url, title, duration in entries
+    ]
+
+
+def _create_yt_single_job(url: str, category: str, length: str,
+                          crop_sides: bool, tags: list[str]) -> int:
+    """Resolve a single YouTube URL and insert one job. May raise _SubmitError."""
+    if length == "auto":
+        try:
+            title, duration = downloader.resolve_youtube_metadata(url)
+        except Exception:
+            log.exception("yt metadata lookup failed for %s", url)
+            raise _SubmitError("could not fetch video metadata; pick a length manually")
+        resolved = classify_length(duration)
+    else:
+        title, _ = downloader.resolve_youtube_metadata(url)
+        resolved = length
+    return db.insert_job(url, title, "youtube", category, resolved, crop_sides, tags)
+
+
+def _create_ia_job(url: str, category: str, length: str,
+                   crop_sides: bool, tags: list[str]) -> int:
+    """Resolve an IA URL/identifier and insert one job. May raise _SubmitError."""
+    identifier = downloader.parse_ia_identifier(url)
+    if not identifier:
+        raise _SubmitError(f"not a valid IA identifier or URL: {url}")
+    title, duration = downloader.resolve_ia_metadata(identifier)
+    return db.insert_job(identifier, title, "ia", category,
+                         _resolved_length(length, duration), crop_sides, tags)
+
+
+def _create_playlist_file_job(url: str, category: str, length: str,
+                              crop_sides: bool, tags: list[str]) -> int:
+    """Insert a job for a single URL parsed from a client-side playlist file."""
+    if length != "auto":
+        return db.insert_job(url, url, "youtube", category, length, crop_sides, tags)
+    try:
+        title, duration = downloader.resolve_youtube_metadata(url)
+        resolved = classify_length(duration)
+    except Exception:
+        # Best-effort: bulk playlist imports keep going on per-row failure.
+        log.warning("yt metadata lookup failed for %s; defaulting to medium", url)
+        title, resolved = url, "medium"
+    return db.insert_job(url, title, "youtube", category, resolved, crop_sides, tags)
+
+
+def _dispatch_submit(url: str, source: str, is_playlist: bool, category: str,
+                     length: str, crop_sides: bool, tags: list[str]) -> list[int]:
+    """Route one URL to the right per-source helper; return the new job ids."""
+    if source == "youtube" and is_playlist:
+        return _create_yt_playlist_jobs(url, category, length, crop_sides, tags)
+    if source == "youtube":
+        return [_create_yt_single_job(url, category, length, crop_sides, tags)]
+    if source == "ia":
+        return [_create_ia_job(url, category, length, crop_sides, tags)]
+    return [_create_playlist_file_job(url, category, length, crop_sides, tags)]
+
+
+@app.route("/api/submit", methods=["POST"])
+def api_submit():
+    """Queue download jobs for one or more YouTube/IA/playlist URLs."""
+    data = request.get_json(force=True)
+    source = data.get("source")
+    urls = data.get("urls", [])
+    category = data.get("category", "")
+    length = data.get("length", "auto")
+    is_playlist = bool(data.get("playlist"))
+    crop_sides = bool(data.get("crop_sides"))
+    tags = [t for t in (data.get("tags") or []) if _SLUG_RE.match(t)]
+    err = _validate_submit_params(source, category, length, urls)
+    if err:
+        return err
+    _ensure_category_and_tags(category, tags)
+    job_ids: list[int] = []
+    for raw_url in urls:
+        url = raw_url.strip()
         if not url:
             continue
-
-        if source == "youtube":
-            if is_playlist:
-                entries = downloader.expand_youtube_playlist(url)
-                if not entries:
-                    return jsonify(error=f"could not expand playlist: {url}"), 400
-                for video_url, title, duration in entries:
-                    resolved_length = length if length != "auto" else classify_length(duration)
-                    jid = db.insert_job(video_url, title, "youtube", category, resolved_length, crop_sides, tags)
-                    job_ids.append(jid)
-            else:
-                if length == "auto":
-                    try:
-                        title, duration = downloader.resolve_youtube_metadata(url)
-                        resolved_length = classify_length(duration)
-                    except Exception:
-                        log.exception("yt metadata lookup failed for %s", url)
-                        return jsonify(
-                            error="could not fetch video metadata; pick a length manually"
-                        ), 400
-                else:
-                    title, _ = downloader.resolve_youtube_metadata(url)
-                    resolved_length = length
-                jid = db.insert_job(url, title, "youtube", category, resolved_length, crop_sides, tags)
-                job_ids.append(jid)
-
-        elif source == "ia":
-            identifier = downloader.parse_ia_identifier(url)
-            if not identifier:
-                return jsonify(error=f"not a valid IA identifier or URL: {url}"), 400
-            title, duration = downloader.resolve_ia_metadata(identifier)
-            resolved_length = length if length != "auto" else classify_length(duration)
-            jid = db.insert_job(identifier, title, "ia", category, resolved_length, crop_sides, tags)
-            job_ids.append(jid)
-
-        elif source == "playlist_file":
-            # urls here are individual video URLs parsed client-side from the file
-            if length == "auto":
-                try:
-                    title, duration = downloader.resolve_youtube_metadata(url)
-                    resolved_length = classify_length(duration)
-                except Exception:
-                    # Best-effort: bulk playlist imports keep going on per-row failure.
-                    log.warning("yt metadata lookup failed for %s; defaulting to medium", url)
-                    title, resolved_length = url, "medium"
-            else:
-                title, resolved_length = url, length
-            jid = db.insert_job(url, title, "youtube", category, resolved_length, crop_sides, tags)
-            job_ids.append(jid)
-
+        try:
+            job_ids.extend(_dispatch_submit(
+                url, source, is_playlist, category, length, crop_sides, tags
+            ))
+        except _SubmitError as exc:
+            return jsonify(error=str(exc)), 400
     return jsonify(job_ids=job_ids, queued=len(job_ids))
 
 
