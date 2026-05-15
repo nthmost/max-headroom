@@ -23,9 +23,13 @@ let nvenc_cmd_base =
   "-r 25 " ^                                      # Explicit constant 25fps output
   "-vf \"format=yuv420p\" " ^
   "-c:v h264_nvenc -preset p4 -profile:v high " ^
-  "-b:v 1400k -maxrate 1400k -bufsize 2800k -g 50 " ^  # 50 frames = 2s GOP at 25fps (matches HLS target)
+  # Alternate A/V sync params tried in commit 62cd1e6 ("audio/video sync
+  # investigation and fix"): -g 50 (2s GOP, matches HLS target) and
+  # aresample=async=1000 (correct up to 1000 samples/sec of drift). If audio
+  # delay regresses with the values below, swap in those instead.
+  "-b:v 1400k -maxrate 1400k -bufsize 2800k -g 60 " ^
   "-c:a aac -b:a 128k -ac 2 -ar 44100 " ^
-  "-af \"aresample=async=1000\" " ^               # Audio resample: correct up to 1000 samples/sec of drift
+  "-af \"aresample=async=1\" " ^                  # Audio resample to sync with video
   "-max_muxing_queue_size 1024 " ^                # Prevent muxing queue overflows
   "-f mpegts "
 
