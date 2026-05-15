@@ -8,28 +8,31 @@ set -euo pipefail
 
 ZIKZAK="zikzak.local"
 SRC_DIR="/mnt/media_transcoded"
-DST_DIR="/mnt/media"
+DROPBOX="/mnt/dropbox"
 
 echo "=========================================="
-echo "Push Transcoded Media to zikzak"
+echo "Push Transcoded Media to zikzak dropbox"
 echo "=========================================="
-
 echo ""
-echo "Syncing $SRC_DIR -> ${ZIKZAK}:${DST_DIR}"
+echo "Files go to ${ZIKZAK}:${DROPBOX}/ where the"
+echo "dropbox-watchdog validates and files them."
+echo ""
+echo "Syncing $SRC_DIR -> ${ZIKZAK}:${DROPBOX}"
 echo "-------------------------------------------"
+
+# Ensure dropbox exists
+ssh "$ZIKZAK" "mkdir -p ${DROPBOX}" || true
+
 # Limit bandwidth to avoid interrupting zikzak's icecast2 stream
-rsync -avh --progress --bwlimit=20000 "$SRC_DIR/" "${ZIKZAK}:${DST_DIR}/"
+rsync -avh --progress --bwlimit=20000 "$SRC_DIR/" "${ZIKZAK}:${DROPBOX}/"
 
 if [[ $? -eq 0 ]]; then
     echo ""
     echo "=========================================="
     echo "Sync complete!"
     echo ""
-    echo "Triggering playlist regeneration on zikzak..."
-    ssh "$ZIKZAK" "sudo -u max /home/max/bin/regenerate-playlists.sh" || true
-    
-    echo ""
-    echo "Done! New media is now available on zikzak."
+    echo "The dropbox-watchdog on zikzak will validate"
+    echo "and file the media automatically."
     echo "=========================================="
 else
     echo ""

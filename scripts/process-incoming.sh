@@ -20,7 +20,7 @@ INCOMING="/mnt/incoming"
 MEDIA="/mnt/media"
 TRANSCODED="/mnt/media_transcoded"
 ZIKZAK="zikzak.local"
-ZIKZAK_MEDIA="/mnt/media"
+ZIKZAK_DROPBOX="/mnt/dropbox"
 LOG_DIR="/var/log/transcode"
 LOCKFILE="/tmp/process-incoming.lock"
 VAAPI_DEVICE="/dev/dri/renderD128"
@@ -169,31 +169,32 @@ for src in "${INCOMING_FILES[@]}"; do
     fi
 done
 
-# Step 3: Push to zikzak if we processed anything
+# Step 3: Push to zikzak dropbox if we processed anything
+# The dropbox-watchdog on zikzak validates and files into /mnt/media/
 if [[ ${#PROCESSED[@]} -gt 0 ]]; then
-    log "Pushing ${#PROCESSED[@]} transcoded file(s) to zikzak..."
+    log "Pushing ${#PROCESSED[@]} transcoded file(s) to zikzak dropbox..."
     
-    # Limit bandwidth to avoid interrupting zikzak's icecast2 stream
-    rsync -avh --progress --bwlimit=20000 "$TRANSCODED/" "${ZIKZAK}:${ZIKZAK_MEDIA}/" \
-        >> "$LOG_DIR/rsync.log" 2>&1
+    # Ensure dropbox directory exists
+    ssh "$ZIKZAK" "mkdir -p ${ZIKZAK_DROPBOX}" >> "$LOG_DIR/rsync.log" 2>&1 || true
+
+    # Push each processed file individually to the dropbox
+    push_ok=0
+    push_fail=0
+    for file in "${PROCESSED[@]}"; do
+        rsync -avh --bwlimit=20000 "$file" "${ZIKZAK}:${ZIKZAK_DROPBOX}/" \
+            >> "$LOG_DIR/rsync.log" 2>&1
+        if [[ $? -eq 0 ]]; then
+            push_ok=$((push_ok + 1))
+            touch "$file"  # Update timestamp for cleanup
+        else
+            push_fail=$((push_fail + 1))
+            log "  Push FAILED: $(basename "$file")"
+        fi
+    done
     
-    if [[ $? -eq 0 ]]; then
-        log "Push complete"
-        
-        # Regenerate playlists on zikzak
-        log "Regenerating playlists on zikzak..."
-        ssh "$ZIKZAK" "sudo -u max /home/max/bin/regenerate-playlists.sh" \
-            >> "$LOG_DIR/playlist.log" 2>&1 || true
-        
-        log "Pipeline complete!"
-        
-        # Mark transcoded files for cleanup
-        for file in "${PROCESSED[@]}"; do
-            touch "$file"  # Update timestamp for cleanup script
-        done
-    else
-        log "Push FAILED - check $LOG_DIR/rsync.log"
-    fi
+    log "Push complete: $push_ok OK, $push_fail failed"
+    # No need to regenerate playlists — the dropbox watchdog handles filing
+    # and liquidsoap picks up new files via inotify.
 fi
 
 log "Done"

@@ -14,7 +14,8 @@ from config import (
     INCOMING_DIR, LOG_DIR,
     YT_DLP, YT_COOKIES,
     LOKI_HOST, LOKI_YT_DLP, LOKI_COOKIES,
-    ZIKZAK_USER, ZIKZAK_HOST, ZIKZAK_JUMP, ZIKZAK_MEDIA,
+    ZIKZAK_USER, ZIKZAK_HOST, ZIKZAK_JUMP, ZIKZAK_MEDIA, ZIKZAK_DROPBOX,
+    HW_ACCEL, VAAPI_DEVICE, TRANSCODE_DIR,
     classify_length,
 )
 
@@ -22,6 +23,46 @@ from config import (
 def _log_path(job_id):
     os.makedirs(LOG_DIR, exist_ok=True)
     return os.path.join(LOG_DIR, f"job_{job_id}.log")
+
+
+def _transcode_cmd_parts(crop_sides=False):
+    """
+    Return (vf_filter, encoder_args) for the configured hardware accelerator.
+    Supports NVENC (RTX 4080 on loki) and VAAPI (Intel iGPU).
+    """
+    if HW_ACCEL == "nvenc":
+        # NVENC: software scale+pad, then hardware encode
+        if crop_sides:
+            vf = (
+                "crop=in_w:in_w*9/16:0:(in_h-in_w*9/16)/2,"
+                "scale=960:540:force_original_aspect_ratio=decrease,"
+                "pad=960:540:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+            )
+        else:
+            vf = (
+                "scale=960:540:force_original_aspect_ratio=decrease,"
+                "pad=960:540:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+            )
+        enc = "-c:v h264_nvenc -b:v 1200k -profile:v main -level 4.1"
+        hw_init = ""  # no device init needed for NVENC
+    else:
+        # VAAPI: upload to GPU, scale on GPU, encode on GPU
+        if crop_sides:
+            vf = (
+                "crop=in_w:in_w*9/16:0:(in_h-in_w*9/16)/2,"
+                "scale=960:540:force_original_aspect_ratio=decrease,"
+                "pad=960:540:(ow-iw)/2:(oh-ih)/2:black,setsar=1,"
+                "format=nv12,hwupload"
+            )
+        else:
+            vf = (
+                "scale=960:540:force_original_aspect_ratio=decrease,"
+                "pad=960:540:(ow-iw)/2:(oh-ih)/2:black,setsar=1,"
+                "format=nv12,hwupload"
+            )
+        enc = "-c:v h264_vaapi -b:v 1200k -profile:v main -level 4.1"
+        hw_init = f"-vaapi_device {VAAPI_DEVICE}"
+    return vf, enc, hw_init
 
 
 def resolve_youtube_oembed(url):
@@ -188,41 +229,51 @@ def parse_ia_identifier(url_or_id):
 
 def _check_pipeline(job):
     """
-    Check whether a completed job's file has landed on zikzak and entered a playlist.
-    Called by the pipeline poller loop — no sleep, safe to retry.
+    Check whether a completed job has been filed by the dropbox watchdog.
+
+    The watchdog sets pipeline_status='live' when it validates and files
+    a transcoded file into /mnt/media/. We just need to re-read the job
+    from the DB to see if the watchdog has updated it.
+
+    If the job is still 'done' with no pipeline_status after the watchdog
+    has had time to process it, something went wrong — check the watchdog
+    logs and /mnt/dropbox/rejected/ on zikzak.
     """
     job_id = job["id"]
-    category = job["category"]
-    length = job["length"]
-
     try:
-        dest = f"{ZIKZAK_MEDIA}/{category}/{length}/"
-        ls_result = subprocess.run(
-            [
-                "ssh", "-o", "StrictHostKeyChecking=no",
-                "-J", ZIKZAK_JUMP,
-                f"{ZIKZAK_USER}@{ZIKZAK_HOST}",
-                f"ls {dest} 2>/dev/null",
-            ],
-            capture_output=True, text=True, timeout=30,
-        )
-        if ls_result.returncode != 0 or not ls_result.stdout.strip():
-            return  # not there yet — poller will retry
+        current = db.get_job(job_id)
+        if current and current.get("pipeline_status") == "live":
+            return  # already filed by watchdog, nothing to do
 
-        db.mark_pipeline_status(job_id, "on_zikzak")
+        # Check if the file is sitting in the dropbox (not yet processed)
+        # or in rejected/ (validation failed). Only SSH if needed.
+        filename = current.get("filename", "")
+        if not filename:
+            return
 
-        playlist_result = subprocess.run(
-            [
-                "ssh", "-o", "StrictHostKeyChecking=no",
-                "-J", ZIKZAK_JUMP,
-                f"{ZIKZAK_USER}@{ZIKZAK_HOST}",
-                f"grep -rl '{category}' /home/max/playlists/*.m3u 2>/dev/null | wc -l",
-            ],
-            capture_output=True, text=True, timeout=30,
+        # Look for the file in dropbox or rejected
+        dropbox_file = f"{ZIKZAK_DROPBOX}/{job_id}__{filename}"
+        rejected_file = f"{ZIKZAK_DROPBOX}/rejected/{job_id}__{filename}"
+        check_cmd = (
+            f"if [ -f {shlex.quote(dropbox_file)} ]; then echo 'pending'; "
+            f"elif [ -f {shlex.quote(rejected_file)} ]; then echo 'rejected'; "
+            f"else echo 'gone'; fi"
         )
-        count = playlist_result.stdout.strip()
-        if playlist_result.returncode == 0 and count.isdigit() and int(count) > 0:
-            db.mark_pipeline_status(job_id, "live")
+        rc, stdout, _ = _ssh_zikzak(check_cmd, timeout=15)
+        status = stdout.strip()
+
+        if status == "rejected":
+            db.mark_pipeline_status(job_id, "rejected")
+        elif status == "gone":
+            # File is neither in dropbox nor rejected — the watchdog filed it.
+            # Confirm by checking /mnt/media/
+            cat = current["category"]
+            leng = current["length"]
+            media_check = f"ls {ZIKZAK_MEDIA}/{cat}/{leng}/{shlex.quote(filename)} 2>/dev/null"
+            rc2, out2, _ = _ssh_zikzak(media_check, timeout=15)
+            if rc2 == 0 and out2.strip():
+                db.mark_pipeline_status(job_id, "live")
+        # status == "pending": still waiting, poller will retry
 
     except Exception:
         pass  # will retry on next poll
@@ -443,8 +494,15 @@ def purge_job_files(job):
 def run_job(job):
     """
     Execute a download job. Blocks until complete.
-    YouTube jobs run on loki and rsync directly to zikzak.
-    IA jobs run locally.
+
+    All paths:
+      1. Download the raw file (yt-dlp on loki, or ia CLI locally)
+      2. Transcode to 960x540 H.264 on loki (VAAPI)
+      3. rsync transcoded file to zikzak:/mnt/dropbox/<job_id>__<filename>.mp4
+      4. Watchdog on zikzak validates and files into /mnt/media/<cat>/<len>/
+
+    YouTube: steps 1-3 happen in a single SSH session on loki.
+    IA: step 1 runs locally, steps 2-3 via a local transcode + rsync.
     """
     job_id = job["id"]
     log_path = _log_path(job_id)
@@ -452,13 +510,8 @@ def run_job(job):
     crop_sides = bool(job.get("crop_sides", 0))
 
     if job["source"] == "ia":
-        dest_dir = os.path.join(INCOMING_DIR, job["category"], job["length"])
-        os.makedirs(dest_dir, exist_ok=True)
-        if crop_sides:
-            # Drop a marker file; process-incoming.sh will use crop filter for
-            # files it finds in this category/length directory.
-            open(os.path.join(dest_dir, ".crop"), "w").close()
-        cmd = _build_ia_cmd(job["url"], dest_dir)
+        cmd = _build_ia_pipeline_cmd(job_id, job["url"], job["category"],
+                                      job["length"], crop_sides=crop_sides)
     else:
         cmd = _build_loki_yt_cmd(job["url"], job["category"], job["length"], job_id,
                                   crop_sides=crop_sides)
@@ -476,11 +529,14 @@ def run_job(job):
 
     if returncode == 0:
         filename = _parse_log_for_filename(log_path)
-        if filename and crop_sides and job["source"] != "ia":
-            # crop step renames to stem.mp4
+        if filename:
+            # The dropbox file is prefixed with job_id; strip that for the DB
+            m = re.match(r'^\d+__(.+)$', filename)
+            if m:
+                filename = m.group(1)
+            # Ensure .mp4 extension (transcode always produces mp4)
             stem = os.path.splitext(filename)[0]
             filename = stem + ".mp4"
-        if filename:
             db.set_filename(job_id, filename)
         db.mark_done(job_id)
     else:
@@ -496,52 +552,70 @@ def run_job(job):
 
 def _build_loki_yt_cmd(url, category, length, job_id, crop_sides=False):
     """
-    SSH to loki, download via yt-dlp to a staging dir,
-    rsync directly to zikzak:/mnt/media/CATEGORY/LENGTH/, then clean up.
-    If crop_sides is True, runs an ffmpeg center-crop pass after download to
-    strip pillarbox bars from square/near-square videos before rsyncing.
+    SSH to loki, download via yt-dlp to a staging dir, transcode to 960x540
+    H.264, then rsync the transcoded file to zikzak's dropbox.
+    The dropbox watchdog on zikzak handles validation and filing.
+
+    The output filename is prefixed with the job_id so the watchdog can
+    look up category/length from the DB: <job_id>__<filename>.mp4
     """
     staging = f"/tmp/intake_{job_id}"
-    dest = f"{ZIKZAK_MEDIA}/{category}/{length}"
+    transcoded = f"{staging}/transcoded"
+    dropbox = ZIKZAK_DROPBOX
     ssh_to_zikzak = f"ssh -o StrictHostKeyChecking=no -J {ZIKZAK_JUMP}"
 
-    if crop_sides:
-        # After download: find the file, crop to 16:9 center slice, replace it.
-        # --restrict-filenames ensures no spaces. ${_f%.*} strips the extension.
-        crop_step = (
-            f" && _f=$(ls {staging}/ | head -1)"
-            f" && ffmpeg -hide_banner -loglevel error -nostdin -y"
-            f" -i {staging}/\"$_f\""
-            f" -vf 'crop=in_w:in_w*9/16:0:(in_h-in_w*9/16)/2,scale=960:540'"
-            f" -c:v libx264 -b:v 1200k -profile:v main"
-            f" -c:a aac -b:a 128k -ar 44100 -ac 2"
-            f" -movflags +faststart {staging}/_crop.mp4"
-            f" && rm {staging}/\"$_f\""
-            f" && mv {staging}/_crop.mp4 {staging}/\"${{_f%.*}}.mp4\""
-        )
-    else:
-        crop_step = ""
+    vf, enc, hw_init = _transcode_cmd_parts(crop_sides)
 
     script = (
         f"set -e && "
         f"export PATH=$PATH:$HOME/.deno/bin && "
-        f"mkdir -p {staging} && "
+        f"mkdir -p {staging} {transcoded} && "
+        # Step 1: Download
         f"{LOKI_YT_DLP} -f bestvideo+bestaudio/best --no-playlist "
         f"--restrict-filenames --cookies {LOKI_COOKIES} "
         f"--remote-components ejs:github "
-        f"-o '{staging}/%(title)s.%(ext)s' '{url}'"
-        f"{crop_step} && "
-        f"ssh -o StrictHostKeyChecking=no -J {ZIKZAK_JUMP} "
-        f"{ZIKZAK_USER}@{ZIKZAK_HOST} 'mkdir -p {dest}' && "
-        f"set +e; rsync -av --no-group -e '{ssh_to_zikzak}' "
-        f"{staging}/ {ZIKZAK_USER}@{ZIKZAK_HOST}:{dest}/; "
-        f"_rc=$?; set -e; [ $_rc -eq 0 ] || [ $_rc -eq 23 ] || exit $_rc && "
+        f"-o '{staging}/%(title)s.%(ext)s' '{url}' && "
+        # Step 2: Find downloaded file
+        f"_src=$(find {staging} -maxdepth 1 -type f | head -1) && "
+        f"_base=$(basename \"$_src\") && "
+        f"_stem=${{_base%.*}} && "
+        f"_out={transcoded}/{job_id}__${{_stem}}.mp4 && "
+        # Step 3: Check for audio
+        f"_has_audio=$(ffprobe -v error -select_streams a "
+        f"-show_entries stream=codec_type -of csv=p=0 \"$_src\" 2>/dev/null | head -1) && "
+        # Step 4: Transcode
+        f"if [ -z \"$_has_audio\" ]; then "
+        f"  ffmpeg -hide_banner -loglevel error -nostdin -y "
+        f"    {hw_init} "
+        f"    -i \"$_src\" "
+        f"    -f lavfi -i anullsrc=r=44100:cl=stereo "
+        f"    -vf '{vf}' "
+        f"    {enc} "
+        f"    -map 0:v -map 1:a -c:a aac -b:a 128k -ar 44100 -shortest "
+        f"    -movflags +faststart \"$_out\"; "
+        f"else "
+        f"  ffmpeg -hide_banner -loglevel error -nostdin -y "
+        f"    {hw_init} "
+        f"    -i \"$_src\" "
+        f"    -vf '{vf}' "
+        f"    {enc} "
+        f"    -map 0:v -map 0:a -c:a aac -b:a 128k -ar 44100 -ac 2 "
+        f"    -movflags +faststart \"$_out\"; "
+        f"fi && "
+        # Step 5: Validate output exists and is nonzero
+        f"test -s \"$_out\" && "
+        # Step 6: Push to zikzak dropbox
+        f"{ssh_to_zikzak} {ZIKZAK_USER}@{ZIKZAK_HOST} 'mkdir -p {dropbox}' && "
+        f"rsync -av --no-group -e '{ssh_to_zikzak}' "
+        f"\"$_out\" {ZIKZAK_USER}@{ZIKZAK_HOST}:{dropbox}/ && "
+        # Step 7: Clean up
         f"rm -rf {staging}"
     )
     return ["ssh", "-o", "StrictHostKeyChecking=no", LOKI_HOST, script]
 
 
 def _build_ia_cmd(identifier, dest_dir):
+    """Legacy: download IA files to a local directory (no transcode)."""
     ia_bin = shutil.which("ia") or "ia"
     return [
         ia_bin, "download", identifier,
@@ -550,3 +624,67 @@ def _build_ia_cmd(identifier, dest_dir):
         f"--destdir={dest_dir}",
         "--ignore-existing",
     ]
+
+
+def _build_ia_pipeline_cmd(job_id, identifier, category, length, crop_sides=False):
+    """
+    Full IA pipeline: download locally, transcode, push to zikzak dropbox.
+    Runs as a bash script locally on loki (the intake host).
+    """
+    staging = f"/tmp/intake_{job_id}"
+    transcoded = f"{staging}/transcoded"
+    dropbox = ZIKZAK_DROPBOX
+    ssh_to_zikzak = f"ssh -o StrictHostKeyChecking=no -J {ZIKZAK_JUMP}"
+    ia_bin = shutil.which("ia") or "ia"
+
+    vf, enc, hw_init = _transcode_cmd_parts(crop_sides)
+
+    script = f"""set -e
+mkdir -p {staging}/raw {transcoded}
+
+# Step 1: Download from Internet Archive
+{ia_bin} download {shlex.quote(identifier)} \
+    --glob='*.mp4' --glob='*.avi' --glob='*.mkv' --glob='*.ogv' --glob='*.webm' \
+    --no-directories --destdir={staging}/raw --ignore-existing
+
+# Step 2: Transcode each file
+for _src in {staging}/raw/*; do
+    [ -f "$_src" ] || continue
+    _base=$(basename "$_src")
+    _stem="${{_base%.*}}"
+    _out="{transcoded}/{job_id}__${{_stem}}.mp4"
+
+    _has_audio=$(ffprobe -v error -select_streams a \
+        -show_entries stream=codec_type -of csv=p=0 "$_src" 2>/dev/null | head -1)
+
+    if [ -z "$_has_audio" ]; then
+        ffmpeg -hide_banner -loglevel error -nostdin -y \
+            {hw_init} \
+            -i "$_src" \
+            -f lavfi -i anullsrc=r=44100:cl=stereo \
+            -vf '{vf}' \
+            {enc} \
+            -map 0:v -map 1:a -c:a aac -b:a 128k -ar 44100 -shortest \
+            -movflags +faststart "$_out"
+    else
+        ffmpeg -hide_banner -loglevel error -nostdin -y \
+            {hw_init} \
+            -i "$_src" \
+            -vf '{vf}' \
+            {enc} \
+            -map 0:v -map 0:a -c:a aac -b:a 128k -ar 44100 -ac 2 \
+            -movflags +faststart "$_out"
+    fi
+
+    test -s "$_out" || {{ echo "Transcode failed: $_base"; exit 1; }}
+done
+
+# Step 3: Push to zikzak dropbox
+{ssh_to_zikzak} {ZIKZAK_USER}@{ZIKZAK_HOST} 'mkdir -p {dropbox}'
+rsync -av --no-group -e '{ssh_to_zikzak}' \
+    {transcoded}/ {ZIKZAK_USER}@{ZIKZAK_HOST}:{dropbox}/
+
+# Step 4: Clean up
+rm -rf {staging}
+"""
+    return ["bash", "-c", script]

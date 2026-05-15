@@ -12,11 +12,18 @@ ZIKZAK_USER    = os.environ.get("ZIKZAK_USER",     "nthmost")
 ZIKZAK_HOST    = os.environ.get("ZIKZAK_HOST",     "10.100.0.5")
 ZIKZAK_JUMP    = os.environ.get("ZIKZAK_JUMP",     "zephyr")
 ZIKZAK_MEDIA   = os.environ.get("ZIKZAK_MEDIA",    "/mnt/media")
+ZIKZAK_DROPBOX = os.environ.get("ZIKZAK_DROPBOX",  "/mnt/dropbox")
 
 # IA downloads still run locally (no throttling issue)
 YT_DLP         = os.environ.get("YT_DLP",          "/usr/local/bin/yt-dlp")
 YT_COOKIES     = os.environ.get("YT_COOKIES",      "")
-INCOMING_DIR   = os.environ.get("INCOMING_DIR",    f"/mnt/media")  # fallback for IA
+INCOMING_DIR   = os.environ.get("INCOMING_DIR",     "/mnt/incoming")
+
+# Transcode settings (used on loki before push to zikzak)
+# Loki has an RTX 4080 — use NVENC (not VAAPI)
+HW_ACCEL       = os.environ.get("HW_ACCEL",        "nvenc")  # "nvenc" or "vaapi"
+VAAPI_DEVICE   = os.environ.get("VAAPI_DEVICE",    "/dev/dri/renderD128")
+TRANSCODE_DIR  = os.environ.get("TRANSCODE_DIR",   "/mnt/media_transcoded")
 PORT = 8765
 
 API_KEY = os.environ.get("INTAKE_API_KEY", "changeme")
