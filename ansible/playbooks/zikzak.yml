@@ -25,6 +25,9 @@
     - role: dropbox-watchdog
       tags: [dropbox-watchdog, intake]
 
+    - role: quadmux-display
+      tags: [quadmux, display]
+
   post_tasks:
     - name: Verify liquidsoap is running
       ansible.builtin.systemd:
