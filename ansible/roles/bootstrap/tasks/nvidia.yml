@@ -1,0 +1,28 @@
+---
+- name: Install ubuntu-drivers tooling
+  ansible.builtin.apt:
+    name:
+      - ubuntu-drivers-common
+      - pciutils
+    state: present
+  become: yes
+
+- name: Check for existing nvidia driver
+  ansible.builtin.command: nvidia-smi
+  register: nvidia_smi_check
+  changed_when: false
+  failed_when: false
+
+- name: Auto-install recommended NVIDIA driver
+  ansible.builtin.command: ubuntu-drivers autoinstall
+  become: yes
+  when: nvidia_smi_check.rc != 0
+  register: nvidia_install
+  changed_when: "'newly installed' in (nvidia_install.stdout | default(''))"
+
+- name: Report driver install result
+  ansible.builtin.debug:
+    msg: >-
+      NVIDIA driver was installed. A REBOOT IS REQUIRED before nvidia-smi
+      and NVENC will work. Re-run the playbook after reboot.
+  when: nvidia_smi_check.rc != 0

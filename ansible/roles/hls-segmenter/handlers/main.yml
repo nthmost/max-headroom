@@ -1,0 +1,14 @@
+---
+# HLS Segmenter role handlers
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  become: yes
+
+- name: Restart HLS segmenters
+  ansible.builtin.systemd:
+    name: "{{ hls_service_prefix }}{{ item.id }}"
+    state: restarted
+  loop: "{{ hls_channels }}"
+  become: yes

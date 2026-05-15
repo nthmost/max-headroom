@@ -1,0 +1,12 @@
+---
+# Full site deployment
+# Usage: ansible-playbook playbooks/site.yml
+#        ansible-playbook playbooks/site.yml --check  # dry-run
+
+- name: Deploy to all hosts
+  hosts: all
+  gather_facts: yes
+
+- import_playbook: zikzak.yml
+- import_playbook: loki.yml
+- import_playbook: zephyr.yml

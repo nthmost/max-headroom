@@ -1,0 +1,14 @@
+---
+# Secrets for Max Headroom infrastructure
+# Copy to vault.yml and encrypt with: ansible-vault encrypt group_vars/vault.yml
+#
+# To edit later: ansible-vault edit group_vars/vault.yml
+# To view: ansible-vault view group_vars/vault.yml
+
+# Icecast passwords
+vault_icecast_source_password: "changeme"
+vault_icecast_admin_password: "changeme"
+vault_icecast_relay_password: "changeme"
+
+# Database password
+vault_db_password: "changeme"

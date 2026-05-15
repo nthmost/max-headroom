@@ -1,0 +1,37 @@
+---
+# Loki intake/transcode server deployment
+# Usage: ansible-playbook playbooks/loki.yml
+#        ansible-playbook playbooks/loki.yml --check  # dry-run
+#        ansible-playbook playbooks/loki.yml --tags intake  # just intake app
+
+- name: Configure loki intake server
+  hosts: loki
+  gather_facts: yes
+  
+  vars_files:
+    - ../group_vars/vault.yml
+
+  pre_tasks:
+    - name: Verify we can reach loki
+      ansible.builtin.ping:
+
+  roles:
+    - role: intake-app
+      tags: [intake, app]
+
+  post_tasks:
+    - name: Verify intake app is running
+      ansible.builtin.systemd:
+        name: intake
+        state: started
+      become: yes
+      check_mode: yes
+      register: intake_status
+      failed_when: intake_status.status.ActiveState != "active"
+      tags: [verify]
+
+    - name: Verify intake app responds
+      ansible.builtin.uri:
+        url: "http://localhost:{{ intake_port }}/"
+        status_code: [200, 302]
+      tags: [verify]

@@ -1,0 +1,38 @@
+---
+# Icecast Relay role defaults
+# These relay streams from zikzak's local Icecast to zephyr's public Icecast
+
+# Source Icecast (local on zikzak)
+relay_source_host: localhost
+relay_source_port: 8000
+
+# Destination Icecast (public on zephyr/nthmost.com)
+relay_dest_host: nthmost.com
+relay_dest_port: 8000
+relay_dest_user: source
+relay_dest_password: "{{ icecast_relay_password }}"
+
+# Relay channels
+relay_channels:
+  - id: 1
+    source_mount: ch1
+    dest_mount: mhbn-ch1
+  - id: 2
+    source_mount: ch2
+    dest_mount: mhbn-ch2
+  - id: 3
+    source_mount: ch3
+    dest_mount: mhbn-ch3
+  - id: 4
+    source_mount: ch4
+    dest_mount: mhbn-ch4
+
+# Service naming
+relay_service_prefix: mhbn-relay-ch
+
+# Service user
+relay_service_user: max
+relay_service_group: max
+
+# Reconnect settings
+relay_reconnect_delay_max: 30

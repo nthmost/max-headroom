@@ -1,0 +1,16 @@
+[Unit]
+Description=Max Headroom Intake Web App
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User={{ intake_service_user }}
+Group={{ intake_service_group }}
+WorkingDirectory={{ intake_app_path }}
+EnvironmentFile=/home/{{ intake_service_user }}/.secrets/mhbn-db.env
+ExecStart={{ intake_venv_path }}/bin/python app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,45 @@
+---
+# Zephyr relay/HLS server deployment
+# Usage: ansible-playbook playbooks/zephyr.yml
+#        ansible-playbook playbooks/zephyr.yml --check  # dry-run
+#        ansible-playbook playbooks/zephyr.yml --tags hls  # just HLS segmenters
+
+- name: Configure zephyr relay server
+  hosts: zephyr
+  gather_facts: yes
+  
+  vars_files:
+    - ../group_vars/vault.yml
+
+  pre_tasks:
+    - name: Verify we can reach zephyr
+      ansible.builtin.ping:
+
+  roles:
+    - role: hls-segmenter
+      tags: [hls, streaming]
+
+  post_tasks:
+    - name: Verify HLS segmenters are running
+      ansible.builtin.systemd:
+        name: "mhbn-hls-ch{{ item }}"
+        state: started
+      become: yes
+      check_mode: yes
+      loop: [1, 2, 3, 4]
+      tags: [verify]
+
+    - name: Verify HLS playlists exist
+      ansible.builtin.stat:
+        path: "/var/www/hls/mhbn-ch{{ item }}/index.m3u8"
+      loop: [1, 2, 3, 4]
+      register: hls_playlists
+      tags: [verify]
+
+    - name: Report HLS playlist status
+      ansible.builtin.debug:
+        msg: "Channel {{ item.item }} playlist: {{ 'exists' if item.stat.exists else 'MISSING' }}"
+      loop: "{{ hls_playlists.results }}"
+      loop_control:
+        label: "ch{{ item.item }}"
+      tags: [verify]

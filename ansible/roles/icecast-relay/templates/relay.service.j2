@@ -1,0 +1,18 @@
+[Unit]
+Description=MHBN relay ch{{ item.id }} to {{ relay_dest_host }} Icecast
+After=network.target icecast2.service
+Wants=icecast2.service
+
+[Service]
+User={{ relay_service_user }}
+Group={{ relay_service_group }}
+Restart=always
+RestartSec=10
+ExecStart=/usr/bin/ffmpeg -hide_banner -loglevel warning \
+  -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max {{ relay_reconnect_delay_max }} \
+  -i http://{{ relay_source_host }}:{{ relay_source_port }}/{{ item.source_mount }}.ts \
+  -c copy -content_type video/MP2T -f mpegts \
+  icecast://{{ relay_dest_user }}:{{ relay_dest_password }}@{{ relay_dest_host }}:{{ relay_dest_port }}/{{ item.dest_mount }}.ts
+
+[Install]
+WantedBy=multi-user.target

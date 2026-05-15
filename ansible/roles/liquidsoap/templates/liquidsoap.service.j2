@@ -1,0 +1,18 @@
+[Unit]
+Description=Zikzak liquidsoap video channels
+After=network.target icecast2.service
+Wants=icecast2.service
+
+[Service]
+Type=simple
+User={{ service_user }}
+Group={{ service_group }}
+ExecStart=/usr/bin/liquidsoap {{ liquidsoap_config_path }}/{{ liquidsoap_config_file }}
+Restart=always
+RestartSec=5
+
+# Allow binding to telnet port
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

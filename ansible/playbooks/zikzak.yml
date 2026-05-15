@@ -1,0 +1,43 @@
+---
+# Zikzak streaming server deployment
+# Usage: ansible-playbook playbooks/zikzak.yml
+#        ansible-playbook playbooks/zikzak.yml --check  # dry-run
+#        ansible-playbook playbooks/zikzak.yml --tags liquidsoap  # just liquidsoap
+
+- name: Configure zikzak streaming server
+  hosts: zikzak
+  gather_facts: yes
+  
+  vars_files:
+    - ../group_vars/vault.yml
+
+  pre_tasks:
+    - name: Verify we can reach zikzak
+      ansible.builtin.ping:
+
+  roles:
+    - role: liquidsoap
+      tags: [liquidsoap, streaming]
+    
+    - role: icecast-relay
+      tags: [relay, streaming]
+
+  post_tasks:
+    - name: Verify liquidsoap is running
+      ansible.builtin.systemd:
+        name: zikzak-liquidsoap
+        state: started
+      become: yes
+      check_mode: yes
+      register: liquidsoap_status
+      failed_when: liquidsoap_status.status.ActiveState != "active"
+      tags: [verify]
+
+    - name: Verify relays are running
+      ansible.builtin.systemd:
+        name: "mhbn-relay-ch{{ item }}"
+        state: started
+      become: yes
+      check_mode: yes
+      loop: [1, 2, 3, 4]
+      tags: [verify]

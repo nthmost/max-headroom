@@ -1,0 +1,47 @@
+---
+# Liquidsoap role tasks
+
+- name: Ensure liquidsoap config directory exists
+  ansible.builtin.file:
+    path: "{{ liquidsoap_config_path }}"
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: '0755'
+  become: yes
+
+- name: Deploy liquidsoap configuration
+  ansible.builtin.template:
+    src: channels.liq.j2
+    dest: "{{ liquidsoap_config_path }}/{{ liquidsoap_config_file }}"
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: '0644'
+    backup: yes
+  become: yes
+  notify: Restart liquidsoap
+
+- name: Deploy liquidsoap systemd service
+  ansible.builtin.template:
+    src: liquidsoap.service.j2
+    dest: /etc/systemd/system/{{ liquidsoap_service_name }}.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify:
+    - Reload systemd
+    - Restart liquidsoap
+
+- name: Ensure liquidsoap service is enabled
+  ansible.builtin.systemd:
+    name: "{{ liquidsoap_service_name }}"
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+
+- name: Ensure liquidsoap service is running
+  ansible.builtin.systemd:
+    name: "{{ liquidsoap_service_name }}"
+    state: started
+  become: yes

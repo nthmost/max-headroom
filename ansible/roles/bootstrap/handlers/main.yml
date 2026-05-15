@@ -1,0 +1,6 @@
+---
+- name: Restart icecast2
+  ansible.builtin.systemd:
+    name: icecast2
+    state: restarted
+  become: yes

@@ -1,0 +1,66 @@
+---
+# Bootstrap role defaults — packages, users, drivers, postgres, icecast2
+
+# Base packages required on every streaming/intake host
+bootstrap_base_packages:
+  - rsync
+  - autossh
+  - git
+  - curl
+  - build-essential
+  - python3-pip
+  - python3-venv
+  - python3-psycopg2
+  - htop
+  - glances
+
+# Media pipeline packages (zikzak)
+bootstrap_media_packages:
+  - liquidsoap
+  - icecast2
+  - ffmpeg
+
+# Postgres packages
+bootstrap_postgres_packages:
+  - postgresql
+  - postgresql-contrib
+
+# Service user (matches existing liquidsoap/relay roles)
+bootstrap_service_user: "{{ service_user | default('max') }}"
+bootstrap_service_group: "{{ service_group | default('max') }}"
+bootstrap_service_user_groups:
+  - video
+  - render
+  - audio
+
+# Media directory layout (matches README category structure)
+bootstrap_media_root: "{{ media_path | default('/mnt/media') }}"
+bootstrap_media_categories:
+  - action
+  - anime
+  - cartoons
+  - comedy
+  - commercials
+  - documentaries
+  - gaming
+  - interstitials
+  - music
+  - philosophy
+  - prelinger
+  - tv_shows
+bootstrap_media_lengths:
+  - short
+  - medium
+  - long
+
+# NVIDIA — install when gpu_type is nvidia
+bootstrap_install_nvidia: "{{ gpu_type | default('none') == 'nvidia' }}"
+
+# Postgres / mhbn DB
+bootstrap_install_postgres: true
+bootstrap_db_name: "{{ db_name | default('mhbn') }}"
+bootstrap_db_user: "{{ db_user | default('mhbn') }}"
+bootstrap_db_password: "{{ vault_db_password }}"
+
+# Icecast2 server (zikzak only — separate from icecast-relay role)
+bootstrap_install_icecast2: true

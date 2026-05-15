@@ -1,0 +1,39 @@
+---
+# Intake App role defaults
+
+# Application paths
+intake_app_path: /home/{{ service_user }}/intake
+intake_venv_path: "{{ intake_app_path }}/venv"
+
+# Service configuration
+intake_service_name: intake
+intake_port: 8765
+intake_bind: 0.0.0.0
+
+# Service user (should match service_user from inventory)
+intake_service_user: "{{ service_user }}"
+intake_service_group: "{{ service_group }}"
+
+# Database connection (loki connects directly)
+intake_db_host: "{{ db_host_loki }}"
+intake_db_port: "{{ db_port_loki }}"
+intake_db_name: "{{ db_name }}"
+intake_db_user: "{{ db_user }}"
+intake_db_password: "{{ db_password }}"
+
+# Media paths
+intake_incoming_path: /mnt/incoming
+intake_media_path: /mnt/media
+intake_transcoded_path: /mnt/media_transcoded
+
+# Transcode settings
+intake_video_width: 960
+intake_video_height: 540
+intake_video_bitrate: 1200k
+intake_audio_bitrate: 128k
+
+# Zikzak push settings (for rsync after transcode)
+intake_zikzak_host: 10.100.0.5
+intake_zikzak_user: nthmost
+intake_zikzak_media_path: /mnt/media
+intake_rsync_bwlimit: 20000  # KB/s

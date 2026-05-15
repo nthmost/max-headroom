@@ -1,0 +1,9 @@
+# Ansible secrets — never commit the real vault
+ansible/group_vars/vault.yml
+ansible/.vault_password
+
+# Editor / OS
+.DS_Store
+*.swp
+*.pyc
+__pycache__/

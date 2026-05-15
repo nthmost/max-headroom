@@ -1,0 +1,51 @@
+---
+# Intake App role tasks
+
+- name: Ensure intake app directory exists
+  ansible.builtin.file:
+    path: "{{ intake_app_path }}"
+    state: directory
+    owner: "{{ intake_service_user }}"
+    group: "{{ intake_service_group }}"
+    mode: '0755'
+
+- name: Ensure secrets directory exists
+  ansible.builtin.file:
+    path: /home/{{ intake_service_user }}/.secrets
+    state: directory
+    owner: "{{ intake_service_user }}"
+    group: "{{ intake_service_group }}"
+    mode: '0700'
+
+- name: Deploy database connection env file
+  ansible.builtin.template:
+    src: mhbn-db.env.j2
+    dest: /home/{{ intake_service_user }}/.secrets/mhbn-db.env
+    owner: "{{ intake_service_user }}"
+    group: "{{ intake_service_group }}"
+    mode: '0600'
+
+- name: Deploy intake systemd service
+  ansible.builtin.template:
+    src: intake.service.j2
+    dest: /etc/systemd/system/{{ intake_service_name }}.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  notify:
+    - Reload systemd
+    - Restart intake
+
+- name: Enable intake service
+  ansible.builtin.systemd:
+    name: "{{ intake_service_name }}"
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+
+- name: Ensure intake service is running
+  ansible.builtin.systemd:
+    name: "{{ intake_service_name }}"
+    state: started
+  become: yes

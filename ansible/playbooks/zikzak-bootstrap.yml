@@ -1,0 +1,17 @@
+---
+# Zikzak first-time bootstrap.
+# Run this against a freshly installed Ubuntu/Mint host before zikzak.yml.
+# Usage: ansible-playbook playbooks/zikzak-bootstrap.yml
+#        ansible-playbook playbooks/zikzak-bootstrap.yml --tags nvidia
+#
+# Idempotent — safe to re-run after reboot for nvidia driver to take effect.
+
+- name: Bootstrap zikzak from clean OS
+  hosts: zikzak
+  gather_facts: yes
+
+  vars_files:
+    - ../group_vars/vault.yml
+
+  roles:
+    - role: bootstrap

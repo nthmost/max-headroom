@@ -1,0 +1,91 @@
+---
+# Max Headroom Infrastructure Inventory
+#
+# Usage:
+#   ansible-playbook -i inventory.yml playbooks/site.yml
+#   ansible-playbook -i inventory.yml playbooks/zikzak.yml --check  # dry-run
+#
+# SSH jump host note:
+#   zikzak and headroom are only reachable via WireGuard through zephyr
+
+all:
+  children:
+    # Streaming server at Noisebridge
+    streaming:
+      hosts:
+        zikzak:
+          ansible_host: 10.100.0.5
+          ansible_user: nthmost
+          ansible_ssh_common_args: '-J zephyr'
+          # Service user for liquidsoap, playlists, etc.
+          service_user: max
+          service_group: max
+          # GPU: GTX 1080 (NVENC/NVDEC)
+          gpu_type: nvidia
+          media_path: /mnt/media
+          liquidsoap_config_path: /home/max/liquidsoap
+          hls_output_path: /var/www/hls
+
+    # Intake app, download, transcode server
+    intake:
+      hosts:
+        loki:
+          ansible_host: text2gene.org
+          ansible_user: nthmost
+          # Service user for intake app
+          service_user: max
+          service_group: max
+          # GPU: RTX 4080 (NVENC)
+          gpu_type: nvidia
+          incoming_path: /mnt/incoming
+          media_path: /mnt/media
+          transcoded_path: /mnt/media_transcoded
+          intake_port: 8765
+
+    # VPS relay and HLS segmenter
+    relay:
+      hosts:
+        zephyr:
+          ansible_host: 149.28.77.210
+          ansible_user: nthmost
+          # No GPU on VPS
+          gpu_type: none
+          hls_output_path: /var/www/hls
+          icecast_port: 8000
+
+    # Spare compute at Noisebridge (batch processing)
+    compute:
+      hosts:
+        headroom:
+          ansible_host: 10.100.0.4
+          ansible_user: nthmost
+          ansible_ssh_common_args: '-J zephyr'
+          # GPU: Intel UHD (VAAPI)
+          gpu_type: intel
+          service_user: max
+          service_group: max
+
+  vars:
+    # Global defaults
+    ansible_python_interpreter: /usr/bin/python3
+    
+    # Icecast configuration
+    icecast_source_password: "{{ vault_icecast_source_password }}"
+    icecast_admin_password: "{{ vault_icecast_admin_password }}"
+    icecast_relay_password: "{{ vault_icecast_relay_password }}"
+    
+    # Database (lives on loki, tunneled to zikzak)
+    db_name: mhbn
+    db_user: mhbn
+    db_password: "{{ vault_db_password }}"
+    db_host_loki: 127.0.0.1
+    db_port_loki: 5432
+    db_host_zikzak: 127.0.0.1
+    db_port_zikzak: 5435  # via reverse tunnel
+    
+    # Video encoding defaults
+    video_width: 960
+    video_height: 540
+    video_bitrate: 1400k
+    audio_bitrate: 128k
+    framerate: 25

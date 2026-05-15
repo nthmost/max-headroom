@@ -1,0 +1,56 @@
+---
+# Liquidsoap role defaults
+
+# Paths
+liquidsoap_config_path: /home/{{ service_user }}/liquidsoap
+liquidsoap_config_file: channels.liq
+liquidsoap_log_file: channels.log
+
+# Service
+liquidsoap_service_name: zikzak-liquidsoap
+
+# Video canvas (must be 720 for NVENC stride alignment)
+liquidsoap_canvas_width: 960
+liquidsoap_canvas_height: 720
+
+# Encoding settings
+liquidsoap_video_bitrate: 1400k
+liquidsoap_video_maxrate: 1400k
+liquidsoap_video_bufsize: 2800k
+liquidsoap_video_gop: 60
+liquidsoap_audio_bitrate: 128k
+liquidsoap_audio_channels: 2
+liquidsoap_audio_samplerate: 44100
+liquidsoap_framerate: 25
+
+# NVENC preset (p1=fastest, p7=slowest/best quality)
+liquidsoap_nvenc_preset: p4
+
+# Icecast output
+liquidsoap_icecast_host: localhost
+liquidsoap_icecast_port: 8000
+liquidsoap_icecast_source_user: source
+liquidsoap_icecast_source_password: "{{ icecast_source_password }}"
+
+# Telnet control
+liquidsoap_telnet_enabled: true
+liquidsoap_telnet_bind: 127.0.0.1
+liquidsoap_telnet_port: 1234
+
+# Media path
+liquidsoap_media_path: /mnt/media
+
+# Channel definitions
+liquidsoap_channels:
+  - id: ch1
+    type: music
+    description: "Long-form music with interstitials"
+  - id: ch2
+    type: programmed
+    description: "General programming"
+  - id: ch3
+    type: programmed
+    description: "General programming"
+  - id: ch4
+    type: programmed
+    description: "General programming"

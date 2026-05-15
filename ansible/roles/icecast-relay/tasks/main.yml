@@ -1,0 +1,30 @@
+---
+# Icecast Relay role tasks
+
+- name: Deploy relay systemd services
+  ansible.builtin.template:
+    src: relay.service.j2
+    dest: /etc/systemd/system/{{ relay_service_prefix }}{{ item.id }}.service
+    owner: root
+    group: root
+    mode: '0644'
+  loop: "{{ relay_channels }}"
+  become: yes
+  notify:
+    - Reload systemd
+    - Restart relays
+
+- name: Enable relay services
+  ansible.builtin.systemd:
+    name: "{{ relay_service_prefix }}{{ item.id }}"
+    enabled: yes
+    daemon_reload: yes
+  loop: "{{ relay_channels }}"
+  become: yes
+
+- name: Ensure relay services are running
+  ansible.builtin.systemd:
+    name: "{{ relay_service_prefix }}{{ item.id }}"
+    state: started
+  loop: "{{ relay_channels }}"
+  become: yes

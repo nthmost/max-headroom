@@ -1,0 +1,49 @@
+---
+- name: Ensure service group exists
+  ansible.builtin.group:
+    name: "{{ bootstrap_service_group }}"
+    state: present
+  become: yes
+
+- name: Ensure service user exists
+  ansible.builtin.user:
+    name: "{{ bootstrap_service_user }}"
+    group: "{{ bootstrap_service_group }}"
+    groups: "{{ bootstrap_service_user_groups }}"
+    append: yes
+    shell: /bin/bash
+    state: present
+    create_home: yes
+  become: yes
+
+- name: Ensure media root exists
+  ansible.builtin.file:
+    path: "{{ bootstrap_media_root }}"
+    state: directory
+    owner: "{{ bootstrap_service_user }}"
+    group: "{{ bootstrap_service_group }}"
+    mode: '0755'
+  become: yes
+
+- name: Ensure category dirs (with length subdirs)
+  ansible.builtin.file:
+    path: "{{ bootstrap_media_root }}/{{ item.0 }}/{{ item.1 }}"
+    state: directory
+    owner: "{{ bootstrap_service_user }}"
+    group: "{{ bootstrap_service_group }}"
+    mode: '0755'
+  loop: "{{ bootstrap_media_categories | product(bootstrap_media_lengths) | list }}"
+  become: yes
+  when: item.0 not in ['interstitials', 'prelinger']
+
+- name: Ensure flat category dirs (interstitials, prelinger)
+  ansible.builtin.file:
+    path: "{{ bootstrap_media_root }}/{{ item }}"
+    state: directory
+    owner: "{{ bootstrap_service_user }}"
+    group: "{{ bootstrap_service_group }}"
+    mode: '0755'
+  loop:
+    - interstitials
+    - prelinger
+  become: yes

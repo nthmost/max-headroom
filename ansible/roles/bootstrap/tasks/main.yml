@@ -1,0 +1,20 @@
+---
+# Bootstrap entrypoint — orchestrates phases via tagged includes.
+
+- import_tasks: packages.yml
+  tags: [bootstrap, packages]
+
+- import_tasks: nvidia.yml
+  when: bootstrap_install_nvidia | bool
+  tags: [bootstrap, nvidia]
+
+- import_tasks: user.yml
+  tags: [bootstrap, user]
+
+- import_tasks: postgresql.yml
+  when: bootstrap_install_postgres | bool
+  tags: [bootstrap, postgres]
+
+- import_tasks: icecast2.yml
+  when: bootstrap_install_icecast2 | bool
+  tags: [bootstrap, icecast2]

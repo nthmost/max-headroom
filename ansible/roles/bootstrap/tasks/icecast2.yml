@@ -1,0 +1,53 @@
+---
+# Icecast2 server (the local instance liquidsoap streams into on zikzak).
+# Distinct from the icecast-relay role (which pushes mounts upstream to zephyr).
+#
+# Debian's icecast2 package requires accepting a debconf prompt on first install.
+# We pre-seed that, then template the config.
+
+- name: Preseed icecast2 debconf
+  ansible.builtin.debconf:
+    name: icecast2
+    question: "{{ item.q }}"
+    vtype: "{{ item.t }}"
+    value: "{{ item.v }}"
+  loop:
+    - { q: 'icecast2/icecast-setup',  t: 'boolean', v: 'true' }
+    - { q: 'icecast2/hostname',       t: 'string',  v: 'localhost' }
+    - { q: 'icecast2/sourcepassword', t: 'string',  v: '{{ icecast_source_password }}' }
+    - { q: 'icecast2/relaypassword',  t: 'string',  v: '{{ icecast_relay_password }}' }
+    - { q: 'icecast2/adminpassword',  t: 'string',  v: '{{ icecast_admin_password }}' }
+  become: yes
+  no_log: true
+
+- name: Install icecast2
+  ansible.builtin.apt:
+    name: icecast2
+    state: present
+  become: yes
+
+- name: Template icecast2 config
+  ansible.builtin.template:
+    src: icecast.xml.j2
+    dest: /etc/icecast2/icecast.xml
+    owner: root
+    group: icecast
+    mode: '0640'
+    backup: yes
+  become: yes
+  notify: Restart icecast2
+
+- name: Enable icecast2 in defaults file
+  ansible.builtin.lineinfile:
+    path: /etc/default/icecast2
+    regexp: '^ENABLE='
+    line: 'ENABLE=true'
+  become: yes
+  notify: Restart icecast2
+
+- name: Ensure icecast2 is running
+  ansible.builtin.systemd:
+    name: icecast2
+    enabled: yes
+    state: started
+  become: yes

@@ -1,0 +1,13 @@
+---
+# Intake App role handlers
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  become: yes
+
+- name: Restart intake
+  ansible.builtin.systemd:
+    name: "{{ intake_service_name }}"
+    state: restarted
+  become: yes

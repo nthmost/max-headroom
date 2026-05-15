@@ -1,0 +1,31 @@
+---
+- name: Install postgresql server
+  ansible.builtin.apt:
+    name: "{{ bootstrap_postgres_packages }}"
+    state: present
+  become: yes
+
+- name: Ensure postgresql is running
+  ansible.builtin.systemd:
+    name: postgresql
+    enabled: yes
+    state: started
+  become: yes
+
+- name: Create mhbn database role
+  ansible.builtin.shell: |
+    psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ bootstrap_db_user }}'" | grep -q 1 \
+      || psql -c "CREATE ROLE {{ bootstrap_db_user }} LOGIN PASSWORD '{{ bootstrap_db_password }}'"
+  become: yes
+  become_user: postgres
+  register: db_role
+  changed_when: "'CREATE ROLE' in db_role.stdout"
+
+- name: Create mhbn database
+  ansible.builtin.shell: |
+    psql -tAc "SELECT 1 FROM pg_database WHERE datname='{{ bootstrap_db_name }}'" | grep -q 1 \
+      || psql -c "CREATE DATABASE {{ bootstrap_db_name }} OWNER {{ bootstrap_db_user }}"
+  become: yes
+  become_user: postgres
+  register: db_create
+  changed_when: "'CREATE DATABASE' in db_create.stdout"

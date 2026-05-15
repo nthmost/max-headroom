@@ -1,0 +1,40 @@
+---
+# HLS Segmenter role tasks
+
+- name: Ensure HLS output directories exist
+  ansible.builtin.file:
+    path: "{{ hls_output_path }}/{{ item.output_dir }}"
+    state: directory
+    owner: "{{ hls_service_user }}"
+    group: "{{ hls_service_group }}"
+    mode: '0755'
+  loop: "{{ hls_channels }}"
+  become: yes
+
+- name: Deploy HLS segmenter systemd services
+  ansible.builtin.template:
+    src: hls-segmenter.service.j2
+    dest: /etc/systemd/system/{{ hls_service_prefix }}{{ item.id }}.service
+    owner: root
+    group: root
+    mode: '0644'
+  loop: "{{ hls_channels }}"
+  become: yes
+  notify:
+    - Reload systemd
+    - Restart HLS segmenters
+
+- name: Enable HLS segmenter services
+  ansible.builtin.systemd:
+    name: "{{ hls_service_prefix }}{{ item.id }}"
+    enabled: yes
+    daemon_reload: yes
+  loop: "{{ hls_channels }}"
+  become: yes
+
+- name: Ensure HLS segmenter services are running
+  ansible.builtin.systemd:
+    name: "{{ hls_service_prefix }}{{ item.id }}"
+    state: started
+  loop: "{{ hls_channels }}"
+  become: yes

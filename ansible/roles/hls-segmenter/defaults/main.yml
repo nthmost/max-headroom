@@ -1,0 +1,38 @@
+---
+# HLS Segmenter role defaults
+
+# Output path for HLS segments
+hls_output_path: /var/www/hls
+
+# HLS settings
+hls_time: 2
+hls_list_size: 10
+hls_flags: "delete_segments+append_list"
+
+# Icecast source (where to pull the stream from)
+hls_icecast_host: 127.0.0.1
+hls_icecast_port: 8000
+
+# Channel definitions for HLS segmenters
+# On zephyr, these pull from the relay mounts (mhbn-ch*)
+# On zikzak, these pull from local mounts (ch*)
+hls_channels:
+  - id: 1
+    mount: mhbn-ch1
+    output_dir: mhbn-ch1
+  - id: 2
+    mount: mhbn-ch2
+    output_dir: mhbn-ch2
+  - id: 3
+    mount: mhbn-ch3
+    output_dir: mhbn-ch3
+  - id: 4
+    mount: mhbn-ch4
+    output_dir: mhbn-ch4
+
+# Service naming
+hls_service_prefix: mhbn-hls-ch
+
+# Service user (www-data for web serving)
+hls_service_user: www-data
+hls_service_group: www-data
