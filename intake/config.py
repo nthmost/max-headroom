@@ -1,6 +1,6 @@
 import os
 
-LOG_DIR = "/var/log/transcode/intake"
+LOG_DIR = os.environ.get("LOG_DIR", "/var/log/transcode/intake")
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 # YouTube downloads run on loki, then rsync directly to zikzak

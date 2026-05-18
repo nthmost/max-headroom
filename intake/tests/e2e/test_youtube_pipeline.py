@@ -30,7 +30,8 @@ def test_youtube_full_pipeline(db_module, clean_e2e_state, e2e_const):
     filename = job["filename"]
     assert filename, "watchdog never wrote a filename onto the job"
     media_path = f"{e2e_const['media_root']}/{e2e_const['category']}/{e2e_const['length']}/{filename}"
-    res = e2e_const["ssh"](f"test -s {media_path} && echo present")
+    import shlex
+    res = e2e_const["ssh"](f"test -s {shlex.quote(media_path)} && echo present")
     assert "present" in res.stdout, f"expected {media_path} on headroom; stdout={res.stdout!r}"
 
 

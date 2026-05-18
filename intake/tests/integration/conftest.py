@@ -41,6 +41,22 @@ def db_module():
     return db
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_test_categories(db_module, _require_test_db):
+    """
+    Ensure the 'zzz_test' category exists for the session. media_files has a
+    foreign key on category → categories(name), so tests that exercise
+    upsert_media_file would otherwise hit FK violations on a fresh mhbn_test.
+    """
+    with db_module.get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO categories (name, is_builtin, is_tag_only) "
+                "VALUES (%s, FALSE, FALSE) ON CONFLICT (name) DO NOTHING",
+                ("zzz_test",),
+            )
+
+
 @pytest.fixture
 def clean_jobs(db_module):
     """
@@ -63,13 +79,18 @@ def clean_jobs(db_module):
 
 @pytest.fixture
 def clean_test_categories(db_module):
-    """Remove user/tag categories created by tests."""
+    """Remove user/tag categories created by tests.
+
+    Excludes the session-scoped 'zzz_test' itself (created by
+    _ensure_test_categories) because media_files rows reference it via FK
+    and would block its removal mid-session.
+    """
     def _purge():
         with db_module.get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "DELETE FROM categories WHERE name LIKE 'zzz_test%' "
-                    "AND is_builtin = FALSE"
+                    "AND name != 'zzz_test' AND is_builtin = FALSE"
                 )
     _purge()
     yield

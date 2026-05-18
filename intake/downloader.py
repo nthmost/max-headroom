@@ -659,11 +659,17 @@ def _ffmpeg_transcode_bash(
 
 
 def _rsync_to_dropbox_bash(local_path_expr: str) -> str:
-    """Bash chunk that ensures dropbox exists and rsyncs the local path into it."""
+    """Bash chunk that ensures dropbox exists and rsyncs the local path into it.
+
+    Flag rationale: --no-group skips group-id preservation (the dropbox is
+    setgid'd to the service group anyway). --omit-dir-times skips mtime
+    preservation on the destination dir itself, which would otherwise fail
+    with EPERM when nthmost rsyncs into a max-owned /mnt/dropbox/.
+    """
     ssh = _ssh_to_zikzak_prefix()
     return (
         f"{ssh} {ZIKZAK_USER}@{ZIKZAK_HOST} 'mkdir -p {ZIKZAK_DROPBOX}' && "
-        f"rsync -av --no-group -e '{ssh}' "
+        f"rsync -rv --no-perms --no-owner --no-group --omit-dir-times -e '{ssh}' "
         f"{local_path_expr} {ZIKZAK_USER}@{ZIKZAK_HOST}:{ZIKZAK_DROPBOX}/"
     )
 
@@ -723,7 +729,7 @@ def _build_ia_cmd(identifier: str, dest_dir: str) -> list[str]:
     ia_bin = shutil.which("ia") or "ia"
     return [
         ia_bin, "download", identifier,
-        "--glob=*.mp4", "--glob=*.avi", "--glob=*.mkv",
+        "--glob=*.mp4|*.avi|*.mkv",
         "--no-directories",
         f"--destdir={dest_dir}",
         "--ignore-existing",
@@ -731,21 +737,31 @@ def _build_ia_cmd(identifier: str, dest_dir: str) -> list[str]:
 
 
 def _ia_download_bash(identifier: str, raw_dir: str) -> str:
-    """ia CLI invocation that downloads all video files into `raw_dir`."""
+    """ia CLI invocation that downloads all video files into `raw_dir`.
+
+    The ia CLI's --glob takes a single pipe-separated pattern list; multiple
+    --glob flags get AND'd (no file matches all five) which silently produces
+    "no matching files found". Learned the hard way.
+    """
     ia_bin = shutil.which("ia") or "ia"
     return (
         f"{ia_bin} download {shlex.quote(identifier)} "
-        f"--glob='*.mp4' --glob='*.avi' --glob='*.mkv' "
-        f"--glob='*.ogv' --glob='*.webm' "
+        f"--glob='*.mp4|*.avi|*.mkv|*.ogv|*.webm' "
         f"--no-directories --destdir={raw_dir} --ignore-existing"
     )
 
 
 def _ia_per_file_loop_bash(raw_dir: str, transcoded: str, job_id: int,
                            hw_init: str, vf: str, enc: str) -> str:
-    """Bash for-loop: transcode each downloaded file into `transcoded`."""
+    """Bash for-loop: transcode each downloaded file into `transcoded`.
+
+    Fails loudly if the IA download produced nothing (otherwise a bogus
+    identifier would silently exit 0 with no file pushed downstream).
+    """
     transcode = _ffmpeg_transcode_bash(hw_init, vf, enc, "$_src", "$_out", "$_has_audio")
     return (
+        f"[ -n \"$(ls -A {raw_dir} 2>/dev/null)\" ] || "
+        f"{{ echo 'IA download produced no files for this identifier'; exit 1; }}; "
         f"for _src in {raw_dir}/*; do "
         f"  [ -f \"$_src\" ] || continue; "
         f"  _base=$(basename \"$_src\"); "

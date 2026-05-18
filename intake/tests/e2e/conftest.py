@@ -33,7 +33,7 @@ PIPELINE_TIMEOUT_S = int(os.environ.get("E2E_PIPELINE_TIMEOUT", "600"))
 PIPELINE_POLL_S = int(os.environ.get("E2E_PIPELINE_POLL", "10"))
 
 # Known-safe IA identifier — small, public domain, always available.
-TEST_IA_IDENTIFIER = os.environ.get("E2E_IA_IDENTIFIER", "Popeye_forPresident_512kb")
+TEST_IA_IDENTIFIER = os.environ.get("E2E_IA_IDENTIFIER", "PopeyeForPresident1956")
 
 # Known-safe Creative Commons YouTube URL.
 TEST_YT_URL = os.environ.get(
