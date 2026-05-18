@@ -142,3 +142,83 @@ hard way in May 2026.
 
 The ansible `wireguard` role enforces this pattern (`wg_hub_endpoint_ip`
 var, no DNS lookup at template time).
+
+## Quadmux compositor: scaling limits and design decisions
+
+The quadmux display composites 4 live MPEG-TS streams (from liquidsoap via
+local Icecast) into a single 1920x1080 frame for the quad splitter. As of
+May 2026, this uses a **hybrid decode** approach:
+
+```
+                    ┌──────────────────────────────────────────────┐
+                    │              mpv (single process)            │
+                    │                                              │
+  ch1.ts ─────────► │  ┌─────────┐    ┌───────────┐    ┌────────┐ │
+  ch2.ts ─────────► │  │ NVDEC   │───►│ lavfi CPU │───►│ vo=gpu │ │──► HDMI
+  ch3.ts ─────────► │  │ decode  │    │ composite │    │ DRM    │ │
+  ch4.ts ─────────► │  │ (GPU 1) │    │           │    │        │ │
+                    │  └─────────┘    └───────────┘    └────────┘ │
+                    └──────────────────────────────────────────────┘
+```
+
+**Current resource usage (May 2026 steady state):**
+- mpv process: ~80% of one CPU core (~10% of system total)
+- System load: ~1.4 on 8 threads (i7-3770K)
+- GTX 1060 decoder: ~5% utilization
+- GTX 1060 GPU: ~9% utilization
+- Memory: ~800 MB
+
+**Why hybrid (NVDEC + CPU composite) instead of pure GPU?**
+
+Pure GPU compositing with ffmpeg CUDA filters (`scale_cuda`, `overlay_cuda`)
+was attempted but fails on live streams. The problem: ffmpeg's CUDA hwaccel
+requires a clean decode context starting from an IDR frame with valid
+SPS/PPS NAL units. When joining a live MPEG-TS mid-GOP (which is always the
+case on startup or reconnect), ffmpeg gets continuous "non-existing PPS"
+errors and never recovers — it simply never produces output frames.
+
+mpv with `--hwdec=nvdec-copy` handles this gracefully: it uses NVDEC for
+decode but copies frames back to CPU memory, allowing lavfi filters to work.
+The "copy" path adds ~1ms latency per frame but enables robust stream joining.
+
+**Scaling estimate:**
+
+With load ~1.4 and headroom to ~6.0 before affecting playback quality, zikzak
+can theoretically run **3-4 independent quadmux displays** before CPU becomes
+the bottleneck. Each additional quadmux would add:
+- ~0.8-1.0 load average
+- ~800 MB memory
+- ~5% decoder utilization on the kiosk GPU
+
+**Practical limits:**
+- **GPU outputs:** GTX 1060 has 1x HDMI + 1x DVI-D + 1x DisplayPort. Max 3
+  physical outputs, but only one can be DRM master for a single mpv process.
+  Multiple quadmuxes would need separate mpv processes with `--drm-connector`
+  targeting different outputs.
+- **HDMI splitter dependency:** Current setup assumes one composite frame
+  split 4 ways. Additional quadmuxes would need their own splitters or a
+  different output strategy.
+- **Decoder bandwidth:** 4 streams × 1.4 Mbps = 5.6 Mbps decode. The 1060
+  can handle 8+ simultaneous 1080p decodes, so this is not a concern.
+
+**Alternative approaches NOT pursued (and why):**
+
+1. **Fix source streams (liquidsoap SPS/PPS injection):** Would require
+   modifying liquidsoap's ffmpeg output to inject SPS/PPS before every IDR
+   frame (`-x264opts keyint=60:min-keyint=60 -flags +global_header`). Adds
+   complexity and may not solve reconnect cases. Not worth it given the
+   hybrid approach works well.
+
+2. **GStreamer nvcodec:** GStreamer's `nvh264dec` may handle stream sync
+   better, but would require rewriting the entire compositor pipeline.
+   Significant effort for uncertain gain.
+
+3. **Hardware video mixer:** A Blackmagic ATEM Mini or similar could do
+   4-input compositing in hardware. Cost (~$300) and additional point of
+   failure not justified for current use case.
+
+**Conclusion:** The hybrid NVDEC+CPU approach is the right tradeoff. It's
+stable, handles stream errors gracefully, and leaves ample headroom for
+zikzak's primary job (liquidsoap encoding). If multiple quadmuxes become
+a real requirement, the path forward is multiple mpv processes on separate
+GPU outputs, not pure-GPU compositing.

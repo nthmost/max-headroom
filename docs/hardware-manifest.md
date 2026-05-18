@@ -3,7 +3,7 @@
 Reference for all machines in the Max Headroom Broadcast Network, their roles,
 connectivity, and separation of concerns.
 
-Last verified: 2026-05-02
+Last verified: 2026-05-15
 
 ## Architecture Overview
 
@@ -104,21 +104,31 @@ Keep this machine's workload minimal and predictable.
 | OS | Linux Mint 22.3 (Zena), kernel 6.17 |
 | CPU | Intel i7-3770K — 4 cores / 8 threads @ 3.5 GHz |
 | RAM | 16 GB |
-| GPU | NVIDIA GTX 1080 — 8 GB VRAM, NVENC/NVDEC |
-| Storage | 1 TB SSD (938 GB, 711 GB free) |
+| GPU 0 | NVIDIA GTX 1080 — 8 GB VRAM (NVENC encode + admin desktop) |
+| GPU 1 | NVIDIA GTX 1060 6GB — 6 GB VRAM (NVDEC decode + quadmux display) |
+| Storage | 1 TB SSD (rebuilt May 2026) |
 | SSH | `ssh -J zephyr nthmost@10.100.0.5` or `ssh nthmost@zikzak.local` (from NB LAN) |
 | WireGuard | `10.100.0.5` |
 | LAN IP | `10.21.1.233` (wired), `10.21.1.157` (wifi) |
 | Audio | ALC892 analog out (3.5mm jack) → amplifier/speakers |
-| Video | GTX 1080 HDMI → quad splitter → 4x CRT displays |
+| Video | GTX 1060 DRM/KMS → quad splitter → 4x CRT displays |
+
+**Dual GPU architecture (May 2026 rebuild):**
+- **GTX 1080 (GPU 0):** liquidsoap 4x NVENC encode + admin desktop (Xorg)
+- **GTX 1060 (GPU 1):** quadmux kiosk with NVDEC decode + direct DRM output
 
 **Separation of concern:** zikzak is the output stage. It should NOT be used
-for transcoding, downloading, or any burst CPU/GPU work. The GTX 1080 runs:
-- 4x NVENC encoders (liquidsoap channels) — ~5% encoder utilization
-- mpv quadmux display (NVDEC decode + lavfi composite) — ~48% CPU
-- Xorg — ~130 MB VRAM
+for transcoding, downloading, or any burst CPU/GPU work. The dual GPUs run:
+- GTX 1080: 4x NVENC encoders (liquidsoap) — ~5% encoder utilization + Xorg
+- GTX 1060: mpv quadmux display (NVDEC decode) — dedicated to CRT output
 
-That leaves headroom, but not much. Don't pile on.
+The GTX 1060 is dedicated solely to the quad CRT display, keeping video decode
+off the primary card and ensuring smooth 4-channel output.
+
+**Quadmux scaling capacity:** The hybrid decode approach (NVDEC decode + CPU
+composite) uses ~1.4 load average. With headroom to ~6.0, zikzak could run
+3-4 quadmux displays before CPU saturation. See `zikzak-architecture.md` for
+detailed analysis of why pure GPU compositing was not feasible.
 
 **Services:**
 - `zikzak-liquidsoap` — 4-channel video streaming engine
