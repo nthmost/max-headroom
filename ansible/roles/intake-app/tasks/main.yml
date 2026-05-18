@@ -42,12 +42,15 @@
     src: "{{ playbook_dir }}/../../intake/"
     dest: "{{ intake_app_path }}/"
     delete: no
+    use_ssh_args: yes  # honor ansible_ssh_common_args (ProxyJump etc)
     rsync_opts:
       - "--exclude=migrate_*.py"
       - "--exclude=migrate_to_pg.py"
       - "--exclude=insert_fallout.py"
       - "--exclude=deploy.sh"
       - "--exclude=intake.service"
+      - "--exclude=intake.db"
+      - "--exclude=tests/"
       - "--exclude=venv/"
       - "--exclude=__pycache__/"
       - "--exclude=*.pyc"
