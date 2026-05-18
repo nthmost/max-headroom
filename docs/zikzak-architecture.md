@@ -64,6 +64,13 @@ Locked at **1920x1080 @ 60Hz** even though the quad splitter advertises 4K
 If you ever replace the CRTs with HD monitors, revisit `qm_drm_mode` in the
 ansible quadmux-display role defaults.
 
+The HDMI splitter feeding the CRTs has a physical **mode button** that is
+easy to bump while rearranging cables. If the CRTs start showing 2 channels
+per screen instead of 1, the splitter's mode got cycled — see
+[troubleshooting.md → Quadmux CRTs Show Wrong Layout](troubleshooting.md#quadmux-crts-show-wrong-layout-multiple-channels-per-screen).
+The kiosk script supports a `QM_LAYOUT` env var as a software fallback if
+the physical button ever fails.
+
 ## mhbn database location
 
 Canonical postgres lives on **loki**, not zikzak. Commit `f483244 Move mhbn

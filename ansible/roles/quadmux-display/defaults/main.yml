@@ -19,6 +19,13 @@ qm_opt_dir: /opt/max-headroom/bin
 # GPU index for NVDEC (0-indexed). nvidia-smi shows GPU 1 = GTX 1060 on zikzak.
 qm_decode_gpu: 1
 
+# Layout the script feeds to the downstream HDMI splitter.
+#   quad:   2x2 grid (960x540 each). Original layout — restore this when
+#           the splitter is in true 2x2 quadrant mode.
+#   hstack: 1x4 vertical strips (480x1080 each). Use when the splitter
+#           divides input into 4 equal vertical strips.
+qm_layout: quad
+
 # Local icecast (liquidsoap output)
 qm_stream_base: http://localhost:8000
 

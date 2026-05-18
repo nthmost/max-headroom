@@ -120,6 +120,34 @@ sudo dmesg | grep -i "nvidia\|gpu\|drm" | tail -20
 
 The "display engine timeout" errors that caused the May 2 removal have not recurred so far on the new install (different kernel, different driver path: kiosk uses direct DRM rather than Xorg). **Watch `dmesg | grep -i nvidia` if the kiosk freezes or `mpv` repeatedly restarts** — if the same class of error returns we'll need to fall back to single-GPU operation and rework the kiosk to share the 1080.
 
+### Quadmux CRTs Show Wrong Layout (Multiple Channels Per Screen)
+
+**Symptom:** Each CRT shows 2 channels at once — either stacked vertically (one above the other) or side-by-side. Used to be one channel per CRT.
+
+**Root cause (2026-05-17):** The HDMI quad splitter feeding the CRTs has a physical **mode button** on the back that is **easy to bump** when rearranging cables. The button cycles through several output modes; only one of them is true 2×2 quadrant splitting.
+
+The mpv composite always feeds the splitter a 1920×1080 frame containing the four channels. How the splitter interprets that frame depends on its mode:
+
+| What you see per CRT | Splitter mode | How to fix |
+|---|---|---|
+| **1 full channel each** | True 2×2 quad — what we want | nothing — already correct |
+| **2 channels stacked vertically** | 2-half split (left/right halves each duplicated to 2 outputs) | press mode button until 2×2 |
+| **2 channels side-by-side** | 2-half split (top/bottom halves each duplicated to 2 outputs) | press mode button until 2×2 |
+| **All 4 CRTs identical** | Mirror mode | press mode button until 2×2 |
+
+**First-line fix:** find the mode button on the splitter (small, usually labeled "Display Mode" or "Multiview"), press it once, watch the CRTs change layout, repeat until you get "1 full channel each." Total fix time: ~30 seconds.
+
+**Software fallback** (only needed if the splitter's button breaks or the 2×2 mode disappears): the kiosk script supports a `QM_LAYOUT` env var so we can emit a different composite arrangement to match a stuck splitter mode:
+
+```bash
+# In /etc/systemd/system/quadmux-display.service (or override via systemctl edit):
+Environment=QM_LAYOUT=hstack   # emit 1x4 horizontal strips instead of 2x2
+```
+
+Valid values: `quad` (default, matches true 2×2 splitter mode) and `hstack` (1×4 horizontal — useful if the splitter only does vertical-strip division). Restart `quadmux-display.service` after the change.
+
+The script + env var are managed by the `quadmux-display` ansible role; set `qm_layout` in `inventory.yml` or `host_vars/zikzak.yml` for a permanent change.
+
 ### Liquidsoap High CPU (~80-100%)
 
 **Symptom:** `zikzak-liquidsoap` pegged at 80%+ CPU; log shows repeated `We must catchup X seconds!`
