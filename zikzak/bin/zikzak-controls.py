@@ -31,8 +31,8 @@ import paho.mqtt.client as mqtt
 # (name, display, command-as-list, icon)
 BUTTONS = [
     (
-        "restart_quadmux",
-        "Restart Quadmux",
+        "crt_wall",
+        "CRT Wall",
         ["sudo", "-n", "systemctl", "restart", "quadmux-display.service"],
         "mdi:television-classic",
     ),
