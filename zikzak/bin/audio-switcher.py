@@ -98,20 +98,19 @@ class MpvController:
 
 def publish_discovery(client: mqtt.Client) -> None:
     payload = {
-        "name": "Audio",
-        "has_entity_name": True,
-        "object_id": "zikzak_audio",
+        "name": "Zikzak Audio",
         "unique_id": "zikzak_audio_source",
         "command_topic": TOPIC_CMD,
         "state_topic": TOPIC_STATE,
         "availability_topic": TOPIC_AVAIL,
         "options": list(SOURCES.keys()),
         "icon": "mdi:speaker",
-        "device": {
-            "identifiers": ["zikzak"],
-            "name": "zikzak",
-            "model": "MHBN streaming server",
-        },
+        # HA rejects MQTT discovery if device.name (or any non-identifier
+        # field) is set without has_entity_name=true on the entity, AND
+        # has_entity_name=true causes the device name to be re-prefixed on
+        # the entity_id (e.g. select.zikzak_zikzak_audio). Keeping only
+        # identifiers preserves the device grouping with neither footgun.
+        "device": {"identifiers": ["zikzak"]},
     }
     client.publish(DISCOVERY_TOPIC, json.dumps(payload), qos=1, retain=True)
 
