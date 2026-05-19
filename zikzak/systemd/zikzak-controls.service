@@ -1,0 +1,15 @@
+[Unit]
+Description=Zikzak controls (MQTT-exposed HA buttons for privileged actions)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=nthmost
+Group=nthmost
+EnvironmentFile=/etc/zikzak/controls.env
+ExecStart=/usr/bin/python3 /opt/max-headroom/zikzak/bin/zikzak-controls.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

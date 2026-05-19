@@ -1,0 +1,4 @@
+# Allow the zikzak-controls service (running as nthmost) to restart specific
+# systemd units triggered by Home Assistant button presses. Keep this list
+# narrow — every entry expands the blast radius of an MQTT compromise.
+nthmost ALL=(root) NOPASSWD: /usr/bin/systemctl restart quadmux-display.service
