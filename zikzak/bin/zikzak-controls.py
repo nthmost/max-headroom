@@ -32,7 +32,7 @@ import paho.mqtt.client as mqtt
 BUTTONS = [
     (
         "crt_wall",
-        "CRT Wall",
+        "Restart CRT Wall",
         ["sudo", "-n", "systemctl", "restart", "quadmux-display.service"],
         "mdi:television-classic",
     ),
