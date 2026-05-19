@@ -606,8 +606,51 @@ If media is corrupted, re-add via the intake app or restore from a backup:
 ```bash
 # On loki:
 rsync -avh /mnt/media_transcoded/ zikzak:/mnt/media/
-
-# On zikzak:
-sudo -u max /home/max/bin/regenerate-playlists.sh
-sudo systemctl restart zikzak-liquidsoap
 ```
+
+The dropbox-watchdog handles validation/filing; liquidsoap's inotify
+watcher picks up new files automatically (no playlist regen needed).
+
+### Stale `known_hosts` after a host rebuild
+
+**Symptom:** intake jobs fail with `Host key verification failed` or
+`Permission denied (publickey,password)`. The intake worker on loki
+runs as `max` and SSHes through zephyr to zikzak; either host's key
+gets rotated (rebuild, fresh OS install) and `max`'s `~/.ssh/known_hosts`
+still has the old entry.
+
+**Diagnose:** check the recent job log:
+```bash
+sudo -u max tail -30 /var/log/transcode/intake/job_*.log | grep -A2 "WARNING"
+```
+
+**Fix:**
+```bash
+# Drop the stale entry
+sudo -u max ssh-keygen -R 10.100.0.5     # zikzak
+sudo -u max ssh-keygen -R 10.100.0.4     # headroom
+sudo -u max ssh-keygen -R 149.28.77.210  # zephyr
+
+# Re-establish (StrictHostKeyChecking=accept-new picks up the new key
+# on next connection, but you can pre-load):
+sudo -u max ssh -o StrictHostKeyChecking=accept-new -J nthmost@149.28.77.210 nthmost@10.100.0.5 hostname
+```
+
+If `Permission denied (publickey)` instead of host-key warning, `max`'s
+pubkey isn't authorized on the target. Get the key from
+`/home/max/.ssh/id_ed25519.pub` and append it to the target's
+`~/.ssh/authorized_keys`. Both zephyr AND zikzak/headroom need it for
+jump-host setups.
+
+### Catalog drift (DB ↔ files out of sync)
+
+See [runbooks/catalog-reconciliation.md](runbooks/catalog-reconciliation.md)
+for the three-phase Op 1 / Op 2 / Op 3 recipe. Most common cause: an
+rsync from another host that itself had both sub-category and canonical
+layouts, leaving zikzak with identical files at two paths.
+
+### Intake cutover (re-deploying intake.service)
+
+See [runbooks/intake-cutover-verify.md](runbooks/intake-cutover-verify.md)
+for the 12-check + live-test-job pattern that verifies an intake-app
+role deploy without you needing to click through the web UI.

@@ -162,6 +162,10 @@ Use the **intake web app** at `https://zikzak.nthmost.net/` — paste a YouTube 
 - [Zikzak Architecture](docs/zikzak-architecture.md) - Dual-GPU split, DRM kiosk, mhbn tunnel, Secure Boot gotchas (host-specific decisions)
 - [Testing Architecture](docs/testing-architecture.md) - unit/integration/e2e layout, loki↔headroom test-pair topology
 
+### Runbooks
+- [Catalog reconciliation](docs/runbooks/catalog-reconciliation.md) - DB ↔ files drift, three-phase migration recipe
+- [Intake cutover verification](docs/runbooks/intake-cutover-verify.md) - 12-check + live-test-job pattern for safe intake.service redeploys
+
 ## Services
 
 ### loki.nthmost.net (Intake + Transcode)
