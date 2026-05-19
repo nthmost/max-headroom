@@ -98,7 +98,9 @@ class MpvController:
 
 def publish_discovery(client: mqtt.Client) -> None:
     payload = {
-        "name": "Zikzak Audio",
+        "name": "Audio",
+        "has_entity_name": True,
+        "object_id": "zikzak_audio",
         "unique_id": "zikzak_audio_source",
         "command_topic": TOPIC_CMD,
         "state_topic": TOPIC_STATE,
