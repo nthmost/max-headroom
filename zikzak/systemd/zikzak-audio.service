@@ -1,0 +1,22 @@
+[Unit]
+Description=Zikzak audio switcher (MQTT-controlled mpv -> 3.5mm jack)
+After=network-online.target icecast2.service zikzak-liquidsoap.service
+Wants=network-online.target zikzak-liquidsoap.service
+PartOf=zikzak-liquidsoap.service
+# Replaces ch1-audio.service. The CH1 stream is the default source; an MQTT
+# command can switch to the KNOB internet radio (or back) without a restart.
+
+[Service]
+User=nthmost
+Group=audio
+RuntimeDirectory=zikzak-audio
+RuntimeDirectoryMode=0750
+EnvironmentFile=/etc/zikzak/audio-switcher.env
+Environment=MPV_SOCKET=/run/zikzak-audio/mpv.sock
+ExecStartPre=/bin/sleep 15
+ExecStart=/usr/bin/python3 /opt/max-headroom/zikzak/bin/audio-switcher.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
