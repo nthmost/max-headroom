@@ -165,6 +165,7 @@ Use the **intake web app** at `https://zikzak.nthmost.net/` — paste a YouTube 
 ### Runbooks
 - [Catalog reconciliation](docs/runbooks/catalog-reconciliation.md) - DB ↔ files drift, three-phase migration recipe
 - [Intake cutover verification](docs/runbooks/intake-cutover-verify.md) - 12-check + live-test-job pattern for safe intake.service redeploys
+- [Beyla mirror backup](docs/runbooks/beyla-backup.md) - daily pull-model backup of mhbn + /mnt/media to beyla's 4.6T disk; GFS retention
 
 ## Services
 
