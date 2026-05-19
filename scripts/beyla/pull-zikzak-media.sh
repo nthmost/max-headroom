@@ -9,7 +9,7 @@
 
 set -uo pipefail
 
-BACKUP_ROOT="${BACKUP_ROOT:-/media/music-archive/backups}"
+BACKUP_ROOT="${BACKUP_ROOT:-/media/music-archive/max-headroom/backups}"
 DEST="$BACKUP_ROOT/zikzak-media"
 LOG_DIR="$BACKUP_ROOT/logs"
 LOG="$LOG_DIR/zikzak-media.$(date +%Y%m%d).log"

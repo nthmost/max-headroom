@@ -7,7 +7,7 @@
 
 set -uo pipefail
 
-BACKUP_ROOT="${BACKUP_ROOT:-/media/music-archive/backups}"
+BACKUP_ROOT="${BACKUP_ROOT:-/media/music-archive/max-headroom/backups}"
 DEST="$BACKUP_ROOT/mhbn-dumps/daily"
 LOG_DIR="$BACKUP_ROOT/logs"
 STAMP="$(date +%Y%m%d-%H%M%S)"

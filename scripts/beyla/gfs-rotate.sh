@@ -13,7 +13,7 @@
 
 set -uo pipefail
 
-BACKUP_ROOT="${BACKUP_ROOT:-/media/music-archive/backups}"
+BACKUP_ROOT="${BACKUP_ROOT:-/media/music-archive/max-headroom/backups}"
 DAILY="$BACKUP_ROOT/mhbn-dumps/daily"
 WEEKLY="$BACKUP_ROOT/mhbn-dumps/weekly"
 MONTHLY="$BACKUP_ROOT/mhbn-dumps/monthly"

@@ -1,7 +1,7 @@
 # Beyla mirror backup
 
 Pull-model backup of zikzak's `/mnt/media` and loki's `mhbn` postgres
-database to `beyla:/media/music-archive/backups/`. Single cron'd host
+database to `beyla:/media/music-archive/max-headroom/backups/`. Single cron'd host
 (beyla) coordinates both pulls — sources don't need to know about the
 backup target.
 
@@ -28,7 +28,7 @@ backup target.
                             │   │   daily->weekly->m │            │
                             │   └────────────────────┘            │
                             │                                     │
-                            │   /media/music-archive/backups/     │
+                            │   /media/music-archive/max-headroom/backups/     │
                             │     ├─ zikzak-media/   (mirror)     │
                             │     ├─ mhbn-dumps/                  │
                             │     │    ├─ daily/   (keep 7)       │
@@ -40,7 +40,7 @@ backup target.
 
 Disk budget: media is ~120 GB at time of setup; weekly+monthly dumps are
 ~50 KB each (mhbn is schema-light, no media bytes); plenty of room on
-the 4.6 TB `/media/music-archive` partition.
+the 4.6 TB `/media/music-archive/max-headroom` partition.
 
 ## Scripts (live in `scripts/beyla/` in this repo)
 
@@ -62,7 +62,7 @@ repo and `scp scripts/beyla/*.sh nthmost@10.100.0.2:bin/`.
 0 4  * * * /home/nthmost/bin/gfs-rotate.sh
 ```
 
-Output goes to `/media/music-archive/backups/logs/<script>.<YYYYMMDD>.log`,
+Output goes to `/media/music-archive/max-headroom/backups/logs/<script>.<YYYYMMDD>.log`,
 plus systemd-journal whatever cron decides to forward (usually nothing
 unless the script exits non-zero).
 
@@ -94,7 +94,7 @@ possible (`--data-only --table=jobs` etc).
 # been mirrored to beyla):
 rsync -av --no-perms --no-owner --no-group --omit-dir-times \
       -e 'ssh -J nthmost@149.28.77.210' \
-      /media/music-archive/backups/zikzak-media/ \
+      /media/music-archive/max-headroom/backups/zikzak-media/ \
       nthmost@10.100.0.5:/mnt/media/
 ```
 
@@ -108,10 +108,10 @@ Daily log files are written even on success. To spot trouble:
 
 ```bash
 ssh -J zephyr nthmost@10.100.0.2 '
-  tail -5 /media/music-archive/backups/logs/mhbn-dump.$(date +%Y%m%d).log
-  tail -5 /media/music-archive/backups/logs/zikzak-media.$(date +%Y%m%d).log
-  ls /media/music-archive/backups/mhbn-dumps/{daily,weekly,monthly}/ | head
-  du -sh /media/music-archive/backups/zikzak-media/
+  tail -5 /media/music-archive/max-headroom/backups/logs/mhbn-dump.$(date +%Y%m%d).log
+  tail -5 /media/music-archive/max-headroom/backups/logs/zikzak-media.$(date +%Y%m%d).log
+  ls /media/music-archive/max-headroom/backups/mhbn-dumps/{daily,weekly,monthly}/ | head
+  du -sh /media/music-archive/max-headroom/backups/zikzak-media/
 '
 ```
 
