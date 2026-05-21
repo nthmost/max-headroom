@@ -79,7 +79,7 @@ def push_nowplaying(local_mount, relay_mount, meta) =
     )
     curl_meta = "curl -sf --get --data-urlencode " ^ string.quote("song=" ^ label) ^ " --data mode=updinfo "
     ignore(process.run(curl_meta ^ string.quote("http://admin:{{ icecast_admin_password }}@{{ liquidsoap_icecast_host }}:{{ liquidsoap_icecast_port }}/admin/metadata?mount=" ^ local_mount)))
-    ignore(process.run(curl_meta ^ string.quote("http://admin:{{ icecast_relay_password }}@nthmost.com:8000/admin/metadata?mount=" ^ relay_mount)))
+    ignore(process.run(curl_meta ^ string.quote("http://admin:{{ icecast_relay_admin_password }}@nthmost.com:8000/admin/metadata?mount=" ^ relay_mount)))
   end
 end
 
@@ -88,8 +88,11 @@ end
 
 def make_music_channel(id) =
   music_long    = dir_src("#{media}/music/long")
+  music_short   = dir_src("#{media}/music/short")
   interstitials = dir_src("#{media}/interstitials")
-  s = rotate([music_long, interstitials])
+  # Mix long and short music (weight 2:3), with interstitials after each
+  music_mix = random(weights=[2, 3], [music_long, music_short])
+  s = rotate([music_mix, interstitials])
   s.on_track(fun(meta) -> push_nowplaying("/#{id}.ts", "/mhbn-#{id}.ts", meta))
   mksafe(s)
 end

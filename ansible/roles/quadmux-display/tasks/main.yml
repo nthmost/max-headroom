@@ -123,29 +123,9 @@
     - Reload systemd
     - Restart quadmux-display
 
-- name: Deploy ch1-audio systemd unit
-  ansible.builtin.template:
-    src: ch1-audio.service.j2
-    dest: /etc/systemd/system/ch1-audio.service
-    owner: root
-    group: root
-    mode: '0644'
-  become: yes
-  notify:
-    - Reload systemd
-    - Restart ch1-audio
-
 - name: Enable quadmux-display (do NOT start automatically — needs X session)
   ansible.builtin.systemd:
     name: quadmux-display
     enabled: yes
-    daemon_reload: yes
-  become: yes
-
-- name: Enable + start ch1-audio (no X dep)
-  ansible.builtin.systemd:
-    name: ch1-audio
-    enabled: yes
-    state: started
     daemon_reload: yes
   become: yes

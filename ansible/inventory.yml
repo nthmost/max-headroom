@@ -80,6 +80,7 @@ all:
     icecast_source_password: "{{ vault_icecast_source_password }}"
     icecast_admin_password: "{{ vault_icecast_admin_password }}"
     icecast_relay_password: "{{ vault_icecast_relay_password }}"
+    icecast_relay_admin_password: "{{ vault_icecast_relay_admin_password }}"
     
     # Database — canonical mhbn lives on loki (postgres 16, local port 5432).
     # zikzak reaches it via loki-pg-tunnel.service (autossh forward tunnel:
