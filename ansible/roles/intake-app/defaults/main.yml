@@ -38,6 +38,6 @@ intake_vaapi_device: /dev/dri/renderD128
 # Zikzak push settings (rsync to dropbox; watchdog files into /mnt/media)
 intake_zikzak_host: 10.100.0.5
 intake_zikzak_jump: zephyr
-intake_zikzak_user: nthmost
+intake_zikzak_user: max
 intake_zikzak_dropbox: /mnt/dropbox
 intake_rsync_bwlimit: 20000  # KB/s
