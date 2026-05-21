@@ -15,7 +15,7 @@ ZIKZAK_MEDIA   = os.environ.get("ZIKZAK_MEDIA",    "/mnt/media")
 ZIKZAK_DROPBOX = os.environ.get("ZIKZAK_DROPBOX",  "/mnt/dropbox")
 
 # IA downloads still run locally (no throttling issue)
-YT_DLP         = os.environ.get("YT_DLP",          "/usr/local/bin/yt-dlp")
+YT_DLP         = os.environ.get("YT_DLP",          "/usr/bin/yt-dlp")
 YT_COOKIES     = os.environ.get("YT_COOKIES",      "")
 INCOMING_DIR   = os.environ.get("INCOMING_DIR",     "/mnt/incoming")
 
