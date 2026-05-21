@@ -3,7 +3,7 @@
 Reference for all machines in the Max Headroom Broadcast Network, their roles,
 connectivity, and separation of concerns.
 
-Last verified: 2026-05-15
+Last verified: 2026-05-20
 
 ## Architecture Overview
 
@@ -18,19 +18,22 @@ Last verified: 2026-05-15
                         │         │
               WireGuard │         │ WireGuard
                         │         │
-       ┌────────────────┘         └──────────────────────┐
-       │  SONIC HOME CONNECTION          NOISEBRIDGE LAN │
-       │                                   10.21.1.0/23  │
-  ┌────┴─────┐                     ┌──────────┐   ┌──────┴──────┐
-  │   loki   │                     │  zikzak  │   │  headroom   │
-  │ 192.168. │                     │10.21.1.233   │ 10.21.1.136 │
-  │  0.3     │                     │ WG .0.5  │   │  WG .0.4    │
-  │          │    (via zephyr)     │          │◄──►│             │
-  │ INTAKE   │ ──────────────────► │ PLAYBACK │   │ SPARE       │
-  │ DOWNLOAD │   transcoded files  │ OUTPUT   │   │ RESOURCE    │
-  │TRANSCODE │   to /mnt/dropbox/  │          │   │             │
-  └──────────┘                     └──────────┘   └─────────────┘
+       ┌────────────────┘         └──────────────────┐
+       │  SONIC HOME CONNECTION      NOISEBRIDGE LAN │
+       │                               10.21.1.0/23  │
+  ┌────┴─────┐                     ┌──────────┐
+  │   loki   │                     │  zikzak  │
+  │ WG .0.6  │                     │ WG .0.5  │
+  │          │    (via zephyr)     │          │
+  │ INTAKE   │ ──────────────────► │ PLAYBACK │
+  │ DOWNLOAD │   transcoded files  │ OUTPUT   │
+  │TRANSCODE │   to /mnt/dropbox/  │          │
+  └──────────┘                     └──────────┘
 ```
+
+**Note:** "headroom" is the project/viewer brand (`headroom.nthmost.net`), not a
+host. The viewer is static HTML/JS served by Apache on zephyr, with the intake
+API proxied from loki via WireGuard.
 
 ## Network Paths
 
@@ -38,14 +41,7 @@ Last verified: 2026-05-15
 |------|----|------|---------|-----------|
 | loki → zikzak | SSH jump via zephyr | ~30ms | ~30 MB/s |
 | loki → zephyr | Direct WireGuard | ~15ms | ~50 MB/s |
-| headroom → zikzak | Direct LAN (`zikzak.local`) | <1ms | ~100+ MB/s |
-| headroom → zikzak | WireGuard (`10.100.0.5`) | <1ms | ~100+ MB/s |
-| headroom → loki | SSH jump via zephyr | ~30ms | ~30 MB/s |
-| headroom → zephyr | WireGuard | ~15ms | ~50 MB/s |
-
-**Key insight:** headroom and zikzak are on the same LAN at Noisebridge.
-Transfers between them are fast and free. Use `zikzak.local` or the LAN
-IP `10.21.1.233` for direct access — do NOT route through zephyr.
+| zephyr → loki | WireGuard (10.100.0.6) | ~15ms | ~50 MB/s |
 
 ## Machines
 
@@ -65,7 +61,7 @@ IP `10.21.1.233` for direct access — do NOT route through zephyr.
 | GPU | NVIDIA RTX 4080 — 16 GB VRAM, NVENC/NVDEC |
 | Storage | 1.8 TB NVMe (system, 389 GB free) + 1 TB SSD (`/mnt/media`, 798 GB free) |
 | SSH | `ssh nthmost@text2gene.org` or `ssh nthmost@loki.nthmost.net` |
-| WireGuard | Not currently a WG peer (reaches zikzak via zephyr jump) |
+| WireGuard | `10.100.0.6` — peer of zephyr |
 
 **Why loki does downloads:**
 - YouTube cookies and IP history live here — moving downloads elsewhere
@@ -79,8 +75,8 @@ IP `10.21.1.233` for direct access — do NOT route through zephyr.
 - Transcoding here means only clean, validated H.264 files ever leave loki
 
 **Services:**
-- `intake.service` — Flask web app (port 8765, runs as `max`)
-- `zikzak-pg-tunnel` — autossh tunnel to zikzak PostgreSQL (localhost:5434)
+- `intake.service` — Flask web app (port 8765, runs as `max`, binds `0.0.0.0`)
+- `loki-pg-to-zikzak` — autossh reverse tunnel exposing loki:5432 as zikzak:127.0.0.1:5435
 - Cron: `process-incoming.sh` every 5 minutes
 
 **Key directories:**
@@ -125,69 +121,24 @@ for transcoding, downloading, or any burst CPU/GPU work. The dual GPUs run:
 The GTX 1060 is dedicated solely to the quad CRT display, keeping video decode
 off the primary card and ensuring smooth 4-channel output.
 
-**Quadmux scaling capacity:** The hybrid decode approach (NVDEC decode + CPU
-composite) uses ~1.4 load average. With headroom to ~6.0, zikzak could run
-3-4 quadmux displays before CPU saturation. See `zikzak-architecture.md` for
-detailed analysis of why pure GPU compositing was not feasible.
-
 **Services:**
 - `zikzak-liquidsoap` — 4-channel video streaming engine
 - `icecast2` — local Icecast server
-- `max-hls-ch{1,2,3,4}` — HLS segmenters
+- `zikzak-audio` — MQTT-controlled audio output to 3.5mm jack (ALSA `plughw:0,0`)
 - `quadmux-display` — mpv 2x2 compositor (user service, `max`)
-- `ch1-audio` — CH1 audio to 3.5mm jack (ALSA `plughw:0,0`)
 - `dropbox-watchdog` — validates and files incoming media from `/mnt/dropbox/`
+- `loki-pg-tunnel` — autossh tunnel; exposes loki's postgres as `127.0.0.1:5435`
+- `mhbn-relay-ch{1,2,3,4}` — ffmpeg relay: zikzak icecast → zephyr icecast
 
 **Key directories:**
 - `/mnt/media/` — active media library (read by liquidsoap)
 - `/mnt/dropbox/` — incoming transcoded files (watchdog picks up and files)
 - `/mnt/dropbox/rejected/` — files that failed validation
-- `/mnt/media_hold/` — 75 GB of Prelinger archives (transcoded, not in rotation)
-- `/mnt/media_staging/` — 16 webm files awaiting transcode (being processed)
 - `/home/max/liquidsoap/` — liquidsoap config and logs
 - `/home/max/playlists/` — reference M3U playlists
 
-**Database:** PostgreSQL `mhbn` on localhost:5432 (user `mhbn`).
-
----
-
-### headroom — Spare Resource
-
-**Role:** Overflow / auxiliary processing. Available for tasks that would be
-wasteful to route back to loki or burdensome to run on zikzak.
-
-| Spec | Detail |
-|------|--------|
-| Hostname | `headroom` |
-| Location | Noisebridge, San Francisco (same LAN as zikzak) |
-| OS | Linux Mint 22.3 (Zena) |
-| CPU | Intel i5-14450HX — 10 cores / 16 threads |
-| RAM | 32 GB |
-| GPU | Intel UHD (Raptor Lake iGPU) — VAAPI encode/decode |
-| Storage | 1 TB NVMe (938 GB, 725 GB free) |
-| SSH | `ssh nthmost@headroom.local` (from NB LAN) or `ssh -J zephyr nthmost@10.100.0.4` |
-| WireGuard | `10.100.0.4` |
-| LAN IP | `10.21.1.136` |
-
-**VAAPI encoders available:** h264_vaapi, hevc_vaapi, av1_vaapi, vp9_vaapi
-
-**When to use headroom:**
-- Batch re-transcoding files already on zikzak (pull from zikzak over LAN,
-  transcode, push back — no internet hop needed)
-- Overflow processing when loki is busy with downloads
-- Testing new transcode settings without affecting production
-- Any task where routing files back to loki via zephyr would be wasteful
-  (headroom ↔ zikzak is <1ms LAN, vs 30ms+ through zephyr)
-
-**When NOT to use headroom:**
-- YouTube downloads (cookies/IP are on loki)
-- Anything that needs NVENC (headroom has no NVIDIA GPU)
-- Persistent services (headroom is not a production server)
-
-**Services:**
-- `cleanup-transcode-tmp.timer` — Daily cleanup of `/tmp/staging-*` and `/tmp/*transcode*` directories (runs at 4 AM)
-
-**Automatic maintenance:** Old transcode temp directories (>1 day) and logs (>7 days) are automatically cleaned up.
+**Database:** PostgreSQL `mhbn` lives on **loki**. Zikzak accesses it via
+`loki-pg-tunnel` at `127.0.0.1:5435` (tunneled through zephyr to loki:5432).
 
 ---
 
@@ -207,11 +158,11 @@ Apache reverse proxy. NOT a compute resource.
 | WireGuard | `10.100.0.1` — hub for all WG peers |
 
 **Services:**
-- WireGuard — connects loki, zikzak, headroom
+- WireGuard — connects loki (`10.100.0.6`), zikzak (`10.100.0.5`), and other peers
 - Icecast relay — re-streams from zikzak to the internet
 - HLS segmenters (`mhbn-hls-ch{1,2,3,4}`)
-- Apache — reverse proxy for `headroom.nthmost.net`, `headroom.nthmost.com`
-- nginx — SSL termination for various subdomains
+- Apache — serves `headroom.nthmost.net` (viewer + HLS + intake proxy → loki)
+- nginx — SSL termination for `zikzak.nthmost.net` → loki intake app
 
 **Do NOT run compute tasks on zephyr.** It has 2 vCPUs and 4 GB RAM.
 It exists to bridge networks and serve HTTP.
@@ -224,9 +175,8 @@ It exists to bridge networks and serve HTTP.
 ┌─────────────┬───────────────────────────────────────────────┐
 │   Machine   │  Responsibility                              │
 ├─────────────┼───────────────────────────────────────────────┤
-│   loki      │  Download, transcode, intake web app         │
+│   loki      │  Download, transcode, intake web app, DB     │
 │   zikzak    │  Playback, streaming, display output         │
-│   headroom  │  Spare: batch transcode, overflow, testing   │
 │   zephyr    │  Network relay, public HTTP endpoints        │
 └─────────────┴───────────────────────────────────────────────┘
 ```
@@ -234,9 +184,7 @@ It exists to bridge networks and serve HTTP.
 **The pipeline flows one direction:**
 
 ```
-loki (download + transcode) ──► zikzak (validate + play)
-                                   ▲
-headroom (batch transcode) ────────┘  (LAN, when needed)
+loki (download + transcode) ──► zikzak (validate + play) ──► zephyr (relay to internet)
 ```
 
 **Rules of thumb:**
@@ -247,14 +195,10 @@ headroom (batch transcode) ────────┘  (LAN, when needed)
 2. **zikzak should be idle except for playback.** If `nvidia-smi` shows GPU
    utilization above 15% outside of liquidsoap+mpv, something is wrong.
 
-3. **Use headroom for Noisebridge-local tasks.** If files are already on
-   zikzak and need re-processing, pull them to headroom over LAN (<1ms),
-   process there, push back. Don't round-trip through loki via zephyr.
+3. **Use loki for all compute tasks.** Downloads, transcoding, cookie-gated
+   scraping, anything that needs a residential IP or heavy GPU power.
 
-4. **Use loki for internet-facing tasks.** Downloads, cookie-gated scraping,
-   anything that needs a residential IP or heavy GPU power.
-
-5. **zephyr is a bridge, not a worker.** It has no GPU, minimal CPU/RAM.
+4. **zephyr is a bridge, not a worker.** It has no GPU, minimal CPU/RAM.
    Its disk is 87% full. Only relay/proxy traffic should flow through it.
 
 ## SSH Quick Reference
@@ -269,12 +213,6 @@ ssh -J zephyr nthmost@10.100.0.5
 # zikzak (from Noisebridge LAN)
 ssh nthmost@zikzak.local
 
-# headroom (from Noisebridge LAN)
-ssh nthmost@headroom.local
-
-# headroom (from internet, via zephyr jump)
-ssh -J zephyr nthmost@10.100.0.4
-
 # zephyr
 ssh nthmost@nthmost.com
 ```
@@ -285,5 +223,4 @@ ssh nthmost@nthmost.com
 |---------|-----------|-------------|-------|
 | loki | `nthmost` | `max` (intake app) | `max` in `video`, `render` groups |
 | zikzak | `nthmost` | `max` (liquidsoap, quadmux) | UID 1002 |
-| headroom | `nthmost` | — | No services |
 | zephyr | `nthmost` | — | Root via sudo |

@@ -10,20 +10,18 @@ Multi-channel HLS video streaming system for CRT quad-mux display at Noisebridge
 See README.md for architecture and workflow details.
 
 **Hosts:** (see `docs/hardware-manifest.md` for full specs, roles, and network paths)
-- `loki` (`loki.nthmost.net` / `text2gene.org`) — intake app, download, transcode
+- `loki` (`loki.nthmost.net` / `text2gene.org`) — intake app, download, transcode, DB
   - SSH: `ssh nthmost@text2gene.org` (or `ssh nthmost@loki.nthmost.net`)
   - Hardware: Ryzen 9 5950X, 64GB RAM, RTX 4080 (NVENC), home Sonic fiber
   - Intake app runs as user `max` at `/home/max/intake/`
-  - Intake UI live at: `https://zikzak.nthmost.net/` (nginx on loki terminates SSL, proxies to Flask on port 8765)
-  - Also accessible at: `https://headroom.nthmost.net/media/` (via Apache proxy on zephyr → WireGuard)
+  - Intake UI: `https://zikzak.nthmost.net/` (nginx on loki → Flask port 8765)
+  - Also at: `https://headroom.nthmost.net/media/` (Apache on zephyr → loki via WireGuard)
 - `zikzak` (`10.100.0.5`, jump via `zephyr`) — streaming server at Noisebridge; media files, liquidsoap, Icecast
-  - Hardware: i7-3770K, 16GB RAM, GTX 1080 (NVENC/NVDEC)
+  - Hardware: i7-3770K, 16GB RAM, GTX 1080 + GTX 1060 (NVENC/NVDEC)
   - **Playback only** — do not run transcoding or heavy tasks here
-- `headroom` (`10.100.0.4` / `headroom.local`) — spare resource at Noisebridge
-  - Hardware: i5-14450HX, 32GB RAM, Intel UHD iGPU (VAAPI)
-  - Same LAN as zikzak (<1ms). Use for batch processing that would be wasteful to route through loki.
 - `zephyr` — VPS (`nthmost.com` / `149.28.77.210`); Icecast relay, HLS segmenters, Apache reverse proxy
   - **Network bridge only** — 2 vCPU, 4GB RAM, no GPU
+  - Serves `headroom.nthmost.net` — the public viewer ("headroom" is the project brand, not a host)
 
 **Note:** `zikzak.nthmost.net` resolves to loki (not zikzak). The Noisebridge machine
 `zikzak` is only reachable via WireGuard (`ssh -J zephyr nthmost@10.100.0.5`) or
