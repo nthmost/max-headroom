@@ -8,7 +8,7 @@ LOKI_HOST      = os.environ.get("LOKI_HOST",       "loki")
 LOKI_YT_DLP    = os.environ.get("LOKI_YT_DLP",     "/usr/bin/yt-dlp")
 LOKI_COOKIES   = os.environ.get("LOKI_COOKIES",    "/home/max/.secrets/yt-cookies.txt")
 
-ZIKZAK_USER    = os.environ.get("ZIKZAK_USER",     "nthmost")
+ZIKZAK_USER    = os.environ.get("ZIKZAK_USER",     "max")
 ZIKZAK_HOST    = os.environ.get("ZIKZAK_HOST",     "10.100.0.5")
 ZIKZAK_JUMP    = os.environ.get("ZIKZAK_JUMP",     "zephyr")
 ZIKZAK_MEDIA   = os.environ.get("ZIKZAK_MEDIA",    "/mnt/media")
