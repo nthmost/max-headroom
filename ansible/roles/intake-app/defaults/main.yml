@@ -10,8 +10,8 @@ intake_log_dir: /var/log/transcode/intake
 intake_service_name: intake
 intake_port: 8765
 intake_bind: 0.0.0.0
-# Reverse-proxy mount point (set BASE_PATH in env; empty for root-mount).
-intake_base_path: /media
+# Reverse-proxy mount point (empty = root-mount at /).
+intake_base_path: ""
 # Auth key — override in vault.yml; do NOT commit a real value here.
 intake_api_key: "{{ vault_intake_api_key | default('changeme') }}"
 
