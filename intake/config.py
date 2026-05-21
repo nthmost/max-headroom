@@ -5,7 +5,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 # YouTube downloads run on loki, then rsync directly to zikzak
 LOKI_HOST      = os.environ.get("LOKI_HOST",       "loki")
-LOKI_YT_DLP    = os.environ.get("LOKI_YT_DLP",     "/home/nthmost/.local/bin/yt-dlp")
+LOKI_YT_DLP    = os.environ.get("LOKI_YT_DLP",     "/usr/bin/yt-dlp")
 LOKI_COOKIES   = os.environ.get("LOKI_COOKIES",    "/home/nthmost/yt-cookies.txt")
 
 ZIKZAK_USER    = os.environ.get("ZIKZAK_USER",     "nthmost")
