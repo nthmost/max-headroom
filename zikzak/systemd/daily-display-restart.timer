@@ -1,0 +1,11 @@
+[Unit]
+Description=Run daily-display-restart at 04:00 every day
+
+[Timer]
+# 4 AM local time daily. Local is America/Los_Angeles on zikzak (NB).
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+Unit=daily-display-restart.service
+
+[Install]
+WantedBy=timers.target

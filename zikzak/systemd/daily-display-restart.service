@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily preemptive restart of liquidsoap + quadmux mpv (workaround for liquidsoap memory leak)
+Documentation=See ~/memory/project_zikzak_quadmux_drift.md
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/daily-display-restart.sh
