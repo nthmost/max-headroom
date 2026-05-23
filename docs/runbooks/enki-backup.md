@@ -9,7 +9,7 @@ two unrelated chains so a failure on one host doesn't compromise both.
 
 ```
                           ┌──────────────────────────────────────┐
-                          │  enki  10.21.1.136 / wg 10.100.0.4   │
+                          │  enki  10.21.0.8 / wg 10.100.0.4     │
                           │                                      │
                           │  ┌──── cron 02:00 ────┐              │
                           │  │ pull-mhbn-dump.sh  │ ───ssh───▶  loki:mhbn (sudo -u postgres)

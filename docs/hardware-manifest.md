@@ -105,7 +105,7 @@ Keep this machine's workload minimal and predictable.
 | Storage | 1 TB SSD (rebuilt May 2026) |
 | SSH | `ssh -J zephyr nthmost@10.100.0.5` or `ssh nthmost@zikzak.local` (from NB LAN) |
 | WireGuard | `10.100.0.5` |
-| LAN IP | `10.21.1.233` (wired), `10.21.1.157` (wifi) |
+| LAN IP | `10.21.0.7` (wired, static — set 2026-05-22) |
 | Audio | ALC892 analog out (3.5mm jack) → amplifier/speakers |
 | Video | GTX 1060 DRM/KMS → quad splitter → 4x CRT displays |
 
