@@ -531,6 +531,7 @@
       <div class="source-tabs">
         <button class="tab active" onclick="setSource('youtube')">YOUTUBE</button>
         <button class="tab" onclick="setSource('ia')">INTERNET ARCHIVE</button>
+        <button class="tab" onclick="setSource('direct_url')">DIRECT URL</button>
       </div>
     </div>
 
@@ -903,12 +904,19 @@ document.addEventListener('click', e => {
 function setSource(s) {
   currentSource = s;
   document.querySelectorAll('.tab').forEach((t, i) => {
-    t.classList.toggle('active', ['youtube','ia'][i] === s);
+    t.classList.toggle('active', ['youtube','ia','direct_url'][i] === s);
   });
   document.getElementById('playlist-toggle').style.display = s === 'youtube' ? '' : 'none';
-  document.getElementById('url-label').textContent = s === 'ia' ? 'ARCHIVE.ORG IDENTIFIER OR URL' : 'YOUTUBE URL';
-  document.getElementById('url-input').placeholder = s === 'ia'
-    ? 'archive.org/details/… or identifier' : 'https://youtube.com/watch?v=…';
+  if (s === 'ia') {
+    document.getElementById('url-label').textContent = 'ARCHIVE.ORG IDENTIFIER OR URL';
+    document.getElementById('url-input').placeholder = 'archive.org/details/… or identifier';
+  } else if (s === 'direct_url') {
+    document.getElementById('url-label').textContent = 'DIRECT FILE URL';
+    document.getElementById('url-input').placeholder = 'https://example.com/video.mp4';
+  } else {
+    document.getElementById('url-label').textContent = 'YOUTUBE URL';
+    document.getElementById('url-input').placeholder = 'https://youtube.com/watch?v=…';
+  }
 }
 
 function setLength(l) {
@@ -1186,17 +1194,16 @@ async function submitJob() {
     let body;
 
     const cropSides = document.getElementById('main-crop-sides').checked;
+    const rawUrl = document.getElementById('url-input').value.trim();
+    if (!rawUrl) { msg('ENTER A URL', 'err'); return; }
+    const cat = document.getElementById('category').value;
+    if (cat === '__new__') { msg('ENTER A CATEGORY NAME', 'err'); return; }
+
     if (currentSource === 'ia') {
-      const rawUrl = document.getElementById('url-input').value.trim();
-      if (!rawUrl) { msg('ENTER AN IDENTIFIER', 'err'); return; }
-      const cat = document.getElementById('category').value;
-      if (cat === '__new__') { msg('ENTER A CATEGORY NAME', 'err'); return; }
       body = { source: 'ia', urls: [rawUrl], category: cat, length: currentLength, crop_sides: cropSides };
+    } else if (currentSource === 'direct_url') {
+      body = { source: 'direct_url', urls: [rawUrl], category: cat, length: currentLength, crop_sides: cropSides };
     } else {
-      const rawUrl = document.getElementById('url-input').value.trim();
-      if (!rawUrl) { msg('ENTER A URL', 'err'); return; }
-      const cat = document.getElementById('category').value;
-      if (cat === '__new__') { msg('ENTER A CATEGORY NAME', 'err'); return; }
       body = {
         source: 'youtube',
         urls: [rawUrl],

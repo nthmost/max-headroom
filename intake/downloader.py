@@ -235,6 +235,24 @@ def parse_ia_identifier(url_or_id):
     return None
 
 
+def resolve_direct_url_metadata(url):
+    """
+    Return (title, duration_seconds) for a direct file URL.
+    Title is extracted from the URL path; duration is None (we don't probe before download).
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+        # Extract filename from path
+        path = parsed.path
+        filename = os.path.basename(path) if path else "direct_download"
+        # Remove extension for title
+        title = os.path.splitext(filename)[0] if filename else url
+        return title, None
+    except Exception:
+        log.exception("direct URL metadata extraction failed for %s", url)
+        return url, None
+
+
 def _dropbox_paths(job_id, filename):
     """Return (incoming, rejected) absolute paths for a job's dropbox file."""
     return (
@@ -537,6 +555,9 @@ def purge_job_files(job: dict) -> dict:
     glob_pat = _purge_glob_for(job)
     if job["source"] == "ia":
         _purge_ia_job(result, job, remote_dir, glob_pat)
+    elif job["source"] == "direct_url":
+        # Direct URLs behave like IA: raw file in incoming, transcoded locally, then on zikzak
+        _purge_ia_job(result, job, remote_dir, glob_pat)
     else:
         _purge_yt_job(result, remote_dir, job.get("filename"), glob_pat)
     return result.as_dict()
@@ -546,6 +567,10 @@ def _build_job_command(job: dict, crop_sides: bool) -> list[str]:
     """Dispatch a job dict to the right pipeline-command builder."""
     if job["source"] == "ia":
         return _build_ia_pipeline_cmd(
+            job["id"], job["url"], job["category"], job["length"], crop_sides=crop_sides
+        )
+    if job["source"] == "direct_url":
+        return _build_direct_url_pipeline_cmd(
             job["id"], job["url"], job["category"], job["length"], crop_sides=crop_sides
         )
     return _build_loki_yt_cmd(
@@ -785,6 +810,35 @@ def _build_ia_pipeline_cmd(job_id: int, identifier: str, category: str, length: 
         "set -e",
         f"mkdir -p {raw_dir} {transcoded}",
         _ia_download_bash(identifier, raw_dir),
+        _ia_per_file_loop_bash(raw_dir, transcoded, job_id, hw_init, vf, enc),
+        _rsync_to_dropbox_bash(f"{transcoded}/"),
+        f"rm -rf {staging}",
+    ])
+    return ["bash", "-c", script]
+
+
+def _direct_url_download_bash(url: str, raw_dir: str) -> str:
+    """curl invocation that downloads a direct file URL into `raw_dir`."""
+    # Use curl with -L to follow redirects, -o to save with a sanitized filename
+    # Extract filename from URL or use a default
+    return (
+        f"curl -L -f --max-time 1800 --output-dir {shlex.quote(raw_dir)} "
+        f"-O {shlex.quote(url)} || "
+        f"{{ echo 'Direct URL download failed for {url}'; exit 1; }}"
+    )
+
+
+def _build_direct_url_pipeline_cmd(job_id: int, url: str, category: str, length: str,
+                                   crop_sides: bool = False) -> list[str]:
+    """Full direct URL pipeline as a single bash -c script run locally on loki."""
+    staging = f"/tmp/intake_{job_id}"
+    raw_dir = f"{staging}/raw"
+    transcoded = f"{staging}/transcoded"
+    vf, enc, hw_init = _transcode_cmd_parts(crop_sides)
+    script = " && ".join([
+        "set -e",
+        f"mkdir -p {raw_dir} {transcoded}",
+        _direct_url_download_bash(url, raw_dir),
         _ia_per_file_loop_bash(raw_dir, transcoded, job_id, hw_init, vf, enc),
         _rsync_to_dropbox_bash(f"{transcoded}/"),
         f"rm -rf {staging}",

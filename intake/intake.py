@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 intake.py — Media Intake Web App for Max Headroom Broadcast Network
-Accepts YouTube URLs, Internet Archive identifiers, and playlist files.
+Accepts YouTube URLs, Internet Archive identifiers, direct file URLs, and playlist files.
 Queues downloads into /mnt/incoming/ for the existing cron pipeline.
 """
 
@@ -74,12 +74,14 @@ def api_quickmeta():
 
     if not raw_url:
         return jsonify(error="no url provided"), 400
-    if source not in ("youtube", "ia"):
-        return jsonify(error="source must be youtube or ia"), 400
+    if source not in ("youtube", "ia", "direct_url"):
+        return jsonify(error="source must be youtube, ia, or direct_url"), 400
 
     try:
         if source == "youtube":
             title, duration = downloader.resolve_youtube_oembed(raw_url)
+        elif source == "direct_url":
+            title, duration = downloader.resolve_direct_url_metadata(raw_url)
         else:
             identifier = downloader.parse_ia_identifier(raw_url)
             if not identifier:
@@ -98,11 +100,24 @@ def api_analyze():
 
     if not raw_url:
         return jsonify(error="no url provided"), 400
-    if source not in ("youtube", "ia"):
-        return jsonify(error="source must be youtube or ia"), 400
+    if source not in ("youtube", "ia", "direct_url"):
+        return jsonify(error="source must be youtube, ia, or direct_url"), 400
 
     try:
-        if source == "youtube":
+        if source == "direct_url":
+            # Direct URLs don't have rich metadata, so skip AI classification
+            title, duration = downloader.resolve_direct_url_metadata(raw_url)
+            return jsonify(
+                title=title,
+                duration_seconds=duration,
+                category="",
+                is_new_category=False,
+                length="medium",
+                reasoning="Direct URL: no metadata available",
+                is_square=False,
+                suggested_tags=[],
+            )
+        elif source == "youtube":
             metadata = downloader.resolve_youtube_rich_metadata(raw_url)
         else:
             identifier = downloader.parse_ia_identifier(raw_url)
@@ -138,8 +153,8 @@ class _SubmitError(ValueError):
 
 def _validate_submit_params(source: str, category: str, length: str, urls: list) -> tuple | None:
     """Return a (jsonify, status) error tuple or None if everything's valid."""
-    if source not in ("youtube", "ia", "playlist_file"):
-        return jsonify(error="source must be youtube, ia, or playlist_file"), 400
+    if source not in ("youtube", "ia", "playlist_file", "direct_url"):
+        return jsonify(error="source must be youtube, ia, playlist_file, or direct_url"), 400
     if not _SLUG_RE.match(category or ""):
         return jsonify(error=f"invalid category name: {category}"), 400
     if length not in ("auto", *LENGTHS):
@@ -202,6 +217,14 @@ def _create_ia_job(url: str, category: str, length: str,
                          _resolved_length(length, duration), crop_sides, tags)
 
 
+def _create_direct_url_job(url: str, category: str, length: str,
+                           crop_sides: bool, tags: list[str]) -> int:
+    """Resolve a direct file URL and insert one job. May raise _SubmitError."""
+    title, duration = downloader.resolve_direct_url_metadata(url)
+    return db.insert_job(url, title, "direct_url", category,
+                         _resolved_length(length, duration), crop_sides, tags)
+
+
 def _create_playlist_file_job(url: str, category: str, length: str,
                               crop_sides: bool, tags: list[str]) -> int:
     """Insert a job for a single URL parsed from a client-side playlist file."""
@@ -226,6 +249,8 @@ def _dispatch_submit(url: str, source: str, is_playlist: bool, category: str,
         return [_create_yt_single_job(url, category, length, crop_sides, tags)]
     if source == "ia":
         return [_create_ia_job(url, category, length, crop_sides, tags)]
+    if source == "direct_url":
+        return [_create_direct_url_job(url, category, length, crop_sides, tags)]
     return [_create_playlist_file_job(url, category, length, crop_sides, tags)]
 
 
