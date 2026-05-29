@@ -24,7 +24,7 @@ import threading
 
 import paho.mqtt.client as mqtt
 
-POLL_INTERVAL = 30  # seconds
+POLL_INTERVAL = 10  # seconds — short enough to catch thermal spikes
 
 TOPIC_AVAIL = "zikzak/thermals/available"
 
@@ -54,6 +54,7 @@ def publish_discovery(client: mqtt.Client) -> None:
             "state_topic": state_topic(slug),
             "availability_topic": TOPIC_AVAIL,
             "device_class": "temperature",
+            "state_class": "measurement",
             "unit_of_measurement": "°C",
             "icon": icon,
             "device": {"identifiers": ["zikzak"]},
