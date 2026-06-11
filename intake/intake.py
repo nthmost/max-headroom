@@ -18,6 +18,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import db
 import downloader
 import analyzer
+import channel_programmer as cp
 from config import LENGTHS, PORT, classify_length
 
 log = logging.getLogger(__name__)
@@ -415,6 +416,59 @@ def api_media_move():
     try:
         downloader.move_media_file(cat, leng, fname, to_cat, to_leng)
         return jsonify(ok=True)
+    except Exception as exc:
+        return jsonify(error=str(exc)), 500
+
+
+# ─── Channel programmer ──────────────────────────────────────────────────────
+
+@app.route("/channels")
+def channels_page():
+    configs = cp.get_channel_configs()
+    return render_template("channels.html", configs=configs, base_path=BASE_PATH)
+
+
+@app.route("/api/channels")
+def api_channels():
+    return jsonify(cp.get_channel_configs())
+
+
+@app.route("/api/channels/<ch>/weights")
+def api_channel_weights(ch):
+    return jsonify(cp.get_channel_weights(ch))
+
+
+@app.route("/api/channels/<ch>/weights", methods=["POST"])
+def api_channel_weights_save(ch):
+    weights = request.get_json(force=True)
+    if not isinstance(weights, list):
+        return jsonify(error="expected a list of weight objects"), 400
+    try:
+        cp.save_channel_weights(ch, weights)
+        return jsonify(ok=True)
+    except Exception as exc:
+        return jsonify(error=str(exc)), 500
+
+
+@app.route("/api/channels/sources")
+def api_channels_sources():
+    return jsonify(cp.get_available_sources())
+
+
+@app.route("/api/channels/generate", methods=["POST"])
+def api_channels_generate():
+    try:
+        return jsonify(liq=cp.generate_liq())
+    except Exception as exc:
+        return jsonify(error=str(exc)), 500
+
+
+@app.route("/api/channels/deploy", methods=["POST"])
+def api_channels_deploy():
+    try:
+        liq = cp.generate_liq()
+        cp.deploy_to_zikzak(liq)
+        return jsonify(ok=True, liq=liq)
     except Exception as exc:
         return jsonify(error=str(exc)), 500
 

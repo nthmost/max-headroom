@@ -21,7 +21,7 @@ from config import (
     YT_DLP, YT_COOKIES,
     LOKI_HOST, LOKI_YT_DLP, LOKI_COOKIES,
     ZIKZAK_USER, ZIKZAK_HOST, ZIKZAK_JUMP, ZIKZAK_MEDIA, ZIKZAK_DROPBOX,
-    HW_ACCEL, VAAPI_DEVICE, TRANSCODE_DIR,
+    HW_ACCEL, TRANSCODE_DIR,
     classify_length,
 )
 
@@ -54,22 +54,7 @@ def _transcode_cmd_parts(crop_sides=False):
         enc = "-c:v h264_nvenc -b:v 1200k -profile:v main -level 4.1"
         hw_init = ""  # no device init needed for NVENC
     else:
-        # VAAPI: upload to GPU, scale on GPU, encode on GPU
-        if crop_sides:
-            vf = (
-                "crop=in_w:in_w*9/16:0:(in_h-in_w*9/16)/2,"
-                "scale=960:540:force_original_aspect_ratio=decrease,"
-                "pad=960:540:(ow-iw)/2:(oh-ih)/2:black,setsar=1,"
-                "format=nv12,hwupload"
-            )
-        else:
-            vf = (
-                "scale=960:540:force_original_aspect_ratio=decrease,"
-                "pad=960:540:(ow-iw)/2:(oh-ih)/2:black,setsar=1,"
-                "format=nv12,hwupload"
-            )
-        enc = "-c:v h264_vaapi -b:v 1200k -profile:v main -level 4.1"
-        hw_init = f"-vaapi_device {VAAPI_DEVICE}"
+        raise RuntimeError(f"Unsupported HW_ACCEL: {HW_ACCEL!r} — loki uses nvenc only")
     return vf, enc, hw_init
 
 
