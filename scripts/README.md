@@ -7,8 +7,7 @@ These scripts are deployed to `~/bin/` on their respective hosts.
 ### process-incoming.sh (Primary - runs via cron)
 Automated pipeline that processes new downloads:
 1. Moves files from `/mnt/incoming/` to `/mnt/media/` (cataloguing)
-2. Transcodes to 960x540 H.264 using NVENC (RTX 4080); falls back to VAAPI
-   if `HW_ACCEL=vaapi` is set in the env.
+2. Transcodes to 960x540 H.264 using NVENC (RTX 4080). loki has no Intel GPU — VAAPI is not supported here.
 3. Pushes each transcoded file to `zikzak:/mnt/dropbox/` (bandwidth-limited
    to 20MB/s). The dropbox-watchdog on zikzak validates and files into
    `/mnt/media/<category>/<length>/` and updates `pipeline_status` in mhbn.

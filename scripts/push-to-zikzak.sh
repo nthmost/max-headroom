@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-ZIKZAK="zikzak.local"
+ZIKZAK="zikzak"
 SRC_DIR="/mnt/media_transcoded"
 DROPBOX="/mnt/dropbox"
 

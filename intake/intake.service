@@ -1,15 +1,26 @@
 [Unit]
-Description=MHBN Media Intake Web App
-After=network.target
+Description=Max Headroom Intake Web App
+After=network.target postgresql.service
+Wants=postgresql.service
 
 [Service]
+Type=simple
 User=max
 Group=max
 WorkingDirectory=/home/max/intake
-Environment=INTAKE_API_KEY=changeme
-Environment=BASE_PATH=/media
-ExecStart=/usr/bin/python3 /home/max/intake/intake.py
-Restart=on-failure
+EnvironmentFile=/home/max/.secrets/mhbn-db.env
+Environment=INTAKE_API_KEY=REPLACE_ME_INTAKE_KEY
+Environment=BASE_PATH=
+Environment=HW_ACCEL=nvenc
+Environment=INCOMING_DIR=/mnt/incoming
+Environment=TRANSCODE_DIR=/mnt/media_transcoded
+Environment=ZIKZAK_HOST=10.100.0.5
+Environment=ZIKZAK_USER=max
+Environment=ZIKZAK_JUMP=zephyr
+Environment=ZIKZAK_DROPBOX=/mnt/dropbox
+Environment=LOG_DIR=/var/log/transcode/intake
+ExecStart=/home/max/intake/venv/bin/python intake.py
+Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal

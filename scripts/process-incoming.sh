@@ -3,14 +3,18 @@
 # Process incoming media files: catalogue, transcode, and push to zikzak
 # Designed to run as a cron job every 5 minutes
 #
+# HARDWARE: Runs on loki only. Uses NVIDIA NVENC (h264_nvenc) via the RTX 4080.
+# DO NOT change the encoder to h264_vaapi — loki has no Intel GPU.
+# DO NOT run this on a machine without an NVIDIA GPU.
+#
 # Flow:
 #   /mnt/incoming/<category>/<length>/*.{mp4,webm,mkv,...}
 #       ↓ move to catalogue
 #   /mnt/media/<category>/<length>/
-#       ↓ transcode
+#       ↓ transcode (h264_nvenc, 960x540)
 #   /mnt/media_transcoded/<category>/<length>/
-#       ↓ rsync
-#   zikzak.local:/mnt/media/
+#       ↓ rsync via zephyr jump host
+#   zikzak:/mnt/dropbox/  (watchdog files into /mnt/media/)
 #
 
 set -euo pipefail
@@ -19,11 +23,10 @@ set -euo pipefail
 INCOMING="/mnt/incoming"
 MEDIA="/mnt/media"
 TRANSCODED="/mnt/media_transcoded"
-ZIKZAK="zikzak.local"
+ZIKZAK="zikzak"
 ZIKZAK_DROPBOX="/mnt/dropbox"
 LOG_DIR="/var/log/transcode"
 LOCKFILE="/tmp/process-incoming.lock"
-VAAPI_DEVICE="/dev/dri/renderD128"
 CLEANUP_AFTER_DAYS=7  # Keep transcoded files for 7 days before cleanup
 
 # Transcode settings
@@ -37,13 +40,6 @@ AUDIO_RATE="44100"
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
 }
-
-# Check for VAAPI device
-if [[ ! -e "$VAAPI_DEVICE" ]]; then
-    log "ERROR: VAAPI device not found: $VAAPI_DEVICE"
-    log "Make sure Intel GPU drivers are installed. Check: ls -la /dev/dri/"
-    exit 1
-fi
 
 # Prevent concurrent runs
 if [[ -f "$LOCKFILE" ]]; then
@@ -131,30 +127,28 @@ for src in "${INCOMING_FILES[@]}"; do
     # otherwise letterbox to preserve aspect ratio.
     if [[ $crop_sides -eq 1 ]]; then
         # Center-crop to 16:9 slice (fills the 960x540 frame, trims top/bottom)
-        VF_FILTER="crop=in_w:in_w*9/16:0:(in_h-in_w*9/16)/2,format=nv12,hwupload,scale_vaapi=${WIDTH}:${HEIGHT}"
+        VF_FILTER="crop=in_w:in_w*9/16:0:(in_h-in_w*9/16)/2,scale=${WIDTH}:${HEIGHT}"
         log "  Transcoding to ${WIDTH}x${HEIGHT} H.264 (crop sides)..."
     else
-        VF_FILTER="scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=nv12,hwupload"
+        VF_FILTER="scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
         log "  Transcoding to ${WIDTH}x${HEIGHT} H.264..."
     fi
 
     if [[ -z "$has_audio" ]]; then
         # No audio - add silent track
         ffmpeg -hide_banner -loglevel error -nostdin -y \
-            -vaapi_device "$VAAPI_DEVICE" \
             -i "$media_dst" \
             -f lavfi -i anullsrc=r=${AUDIO_RATE}:cl=stereo \
             -vf "$VF_FILTER" \
-            -c:v h264_vaapi -b:v "$VIDEO_BITRATE" -profile:v main -level 4.1 \
+            -c:v h264_nvenc -b:v "$VIDEO_BITRATE" -profile:v main -level 4.1 \
             -map 0:v -map 1:a -c:a aac -b:a ${AUDIO_BITRATE} -ar ${AUDIO_RATE} -shortest \
             -movflags +faststart \
             "$transcode_dst" 2>> "$LOG_DIR/transcode_errors.log"
     else
         ffmpeg -hide_banner -loglevel error -nostdin -y \
-            -vaapi_device "$VAAPI_DEVICE" \
             -i "$media_dst" \
             -vf "$VF_FILTER" \
-            -c:v h264_vaapi -b:v "$VIDEO_BITRATE" -profile:v main -level 4.1 \
+            -c:v h264_nvenc -b:v "$VIDEO_BITRATE" -profile:v main -level 4.1 \
             -map 0:v -map 0:a -c:a aac -b:a ${AUDIO_BITRATE} -ar ${AUDIO_RATE} -ac 2 \
             -movflags +faststart \
             "$transcode_dst" 2>> "$LOG_DIR/transcode_errors.log"

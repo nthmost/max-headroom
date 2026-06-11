@@ -1,0 +1,19 @@
+[Unit]
+Description=Reverse SSH tunnel — expose loki Postgres to zikzak
+After=network.target postgresql.service
+Wants=network.target
+
+[Service]
+User=nthmost
+ExecStart=/usr/bin/autossh -M 0 -N \
+    -o ServerAliveInterval=30 \
+    -o ServerAliveCountMax=3 \
+    -o StrictHostKeyChecking=no \
+    -o ExitOnForwardFailure=yes \
+    -R 5435:127.0.0.1:5432 \
+    -J zephyr nthmost@10.100.0.5
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -168,9 +168,9 @@ yt-dlp -f 'bestvideo+bestaudio/best' \
 
 # This automatically:
 #   - Catalogues to /mnt/media/
-#   - Transcodes with VAAPI
-#   - Pushes to zikzak (bwlimit=20MB/s)
-#   - Regenerates playlists on zikzak
+#   - Transcodes with NVENC (h264_nvenc)
+#   - Pushes to zikzak:/mnt/dropbox/ (bwlimit=20MB/s)
+#   - dropbox-watchdog on zikzak files and updates DB
 
 # 3. Files are auto-cleaned up after 7 days on loki
 ```
@@ -213,17 +213,6 @@ ffmpeg -hwaccel cuda -hwaccel_output_format cuda \
     -vf "scale_cuda=960:540:force_original_aspect_ratio=decrease" \
     -c:v h264_nvenc -preset p4 -b:v 1200k -profile:v main \
     -map 0:v -map 1:a -c:a aac -b:a 128k -ar 44100 -shortest \
-    -movflags +faststart \
-    output.mp4
-```
-
-**For headroom** (which has Intel VAAPI):
-```bash
-ffmpeg -vaapi_device /dev/dri/renderD128 \
-    -i input.webm \
-    -vf "format=nv12,hwupload,scale_vaapi=960:540:force_original_aspect_ratio=decrease" \
-    -c:v h264_vaapi -b:v 1200k -profile:v main \
-    -c:a aac -b:a 128k -ar 44100 -ac 2 \
     -movflags +faststart \
     output.mp4
 ```
