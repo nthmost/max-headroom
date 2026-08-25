@@ -85,9 +85,16 @@ ffmpeg -encoders | grep nvenc
 
 ### GPU Stability (2026-05-02)
 
-**Current configuration:** Single GTX 1080 (8GB VRAM)
+> **Update (2026-05-14 rebuild):** The GTX 1060 was **reinstalled** and is now the
+> dedicated kiosk-display GPU (drives HDMI-A-2 → quad splitter via direct DRM/KMS, no
+> X), while the GTX 1080 still handles all 4 liquidsoap NVENC encoders. So zikzak
+> currently runs **both** GPUs, not the single-1080 config described below. See
+> [zikzak-architecture.md](zikzak-architecture.md) and troubleshooting.md → "GPU
+> Hardware Issues" for the split rationale.
 
-**Removed:** GTX 1060 6GB (was causing "Display engine timeout" errors and X server hangs)
+**Configuration as of 2026-05-02:** Single GTX 1080 (8GB VRAM)
+
+**Removed (later reinstalled — see update above):** GTX 1060 6GB (was causing "Display engine timeout" errors and X server hangs)
 
 **Performance baseline (GTX 1080 alone):**
 - GPU utilization: ~11% (4x NVENC encoders + mpv NVDEC decode)
@@ -118,6 +125,44 @@ Note: on a freshly restarted liquidsoap, CPU spikes further while it scans all
 directory sources and pre-buffers each one. This settles within ~2 minutes.
 zikzak has 8 logical threads (4 cores + HT), so liquidsoap and mpv each running
 at ~50–70% means they are each fully occupying one physical core — normal and sustainable.
+
+### Memory Containment (zikzak-liquidsoap) — added 2026-08-25
+
+**Why:** zikzak was periodically hard-freezing — powered with the CRT wall lit but
+network-dead on every path, recoverable only by a physical power-cycle at NB. Root
+cause (confirmed from `/var/log/atop` history, 2026-08-20): `zikzak-liquidsoap`
+occasionally runs away from its normal ~500MB RSS to **~7.8GB** (50% of RAM) within
+hours — a raw-frame buffer explosion (a stalled encoder or a pathological media file;
+raw 960×720 video is ~25MB/s *per channel*). RAM + the 2GB swap fill, but the kernel
+OOM-killer never fires (enough reclaimable page cache to stay under the threshold), so
+instead of killing liquidsoap the box thrashes at load ~97 / `memfull 99%` and wedges.
+
+**Fix:** a cgroup memory cap on the unit so a runaway kills *only* liquidsoap (which
+`Restart=always` bounces in 5s) instead of taking down the whole machine.
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `MemoryAccounting` | `yes` | Enable per-cgroup memory tracking |
+| `MemoryHigh` | `2G` | Soft limit — kernel starts reclaiming pressure here |
+| `MemoryMax` | `3G` | Hard limit — cgroup OOM-kill above this (~6× normal RSS) |
+
+Configured in `ansible/roles/liquidsoap/templates/liquidsoap.service.j2`; values are
+tunable via `liquidsoap_memory_high` / `liquidsoap_memory_max` in the role defaults.
+
+```bash
+# Verify effective limits
+systemctl show zikzak-liquidsoap.service -p MemoryMax -p MemoryHigh -p MemoryAccounting
+# MemoryMax=3221225472 (3.0G), MemoryHigh=2147483648 (2.0G), MemoryAccounting=yes
+
+# Watch live cgroup memory pressure / current usage
+systemctl status zikzak-liquidsoap.service | grep Memory
+# Did the cap ever fire? (a breach = OOM kill scoped to the unit's cgroup)
+journalctl -u zikzak-liquidsoap | grep -iE "memory|oom|killed"
+```
+
+**Not the cause (ruled out):** NVENC session contention — the 1080 runs all 4 encoders
+at ~11% util. Do not offload encoders to the 1060 (reserved kiosk GPU). See
+[troubleshooting.md](troubleshooting.md) → "Whole Box Frozen" for the incident detail.
 
 ### Services on zikzak
 
