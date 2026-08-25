@@ -9,6 +9,12 @@ liquidsoap_log_file: channels.log
 # Service
 liquidsoap_service_name: zikzak-liquidsoap
 
+# Memory containment (see liquidsoap.service.j2 and docs/troubleshooting.md).
+# Normal RSS ~500MB; cap well above that so legit spikes survive but a runaway
+# is killed+restarted long before it can hard-freeze the box.
+liquidsoap_memory_high: 2G
+liquidsoap_memory_max: 3G
+
 # Video canvas (must be 720 for NVENC stride alignment)
 liquidsoap_canvas_width: 960
 liquidsoap_canvas_height: 720

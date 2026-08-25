@@ -11,6 +11,17 @@ ExecStart=/usr/bin/liquidsoap {{ liquidsoap_config_path }}/{{ liquidsoap_config_
 Restart=always
 RestartSec=5
 
+# Memory containment. A video-buffer runaway (a stalled NVENC encoder or a
+# pathological media file makes liquidsoap buffer raw frames unboundedly) used
+# to fill RAM + the 2G swap and thrash the whole box into an unrecoverable
+# freeze — the kernel OOM-killer never fired, so it just spun at load ~97 until
+# someone drove to NB to power-cycle it (froze 2026-08-20, ~7.8G RSS).
+# Normal RSS is ~500MB. Capping the cgroup makes a runaway kill ONLY liquidsoap;
+# Restart=always then brings it back in RestartSec instead of taking down zikzak.
+MemoryAccounting=yes
+MemoryHigh={{ liquidsoap_memory_high }}
+MemoryMax={{ liquidsoap_memory_max }}
+
 # Allow binding to telnet port
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 

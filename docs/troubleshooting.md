@@ -148,11 +148,36 @@ Valid values: `quad` (default, matches true 2×2 splitter mode) and `hstack` (1�
 
 The script + env var are managed by the `quadmux-display` ansible role; set `qm_layout` in `inventory.yml` or `host_vars/zikzak.yml` for a permanent change.
 
+### Whole Box Frozen — Powered + Screens On, but Network-Dead ("grinds to a halt")
+
+**Symptom:** zikzak looks online at NB (CRT wall lit, power/LAN link lights on) but is unreachable on every path — LAN IP, mDNS, and WG all time out. Only a physical power-cycle recovers it. Recurs every week or two.
+
+**Root cause (confirmed 2026-08-20 via `atop` history):** a **liquidsoap memory-buffer runaway** thrashes the whole machine into an unrecoverable livelock. Sequence:
+
+1. `zikzak-liquidsoap` normally holds ~500MB RSS. Episodically it runs away — Aug 20 it went **488MB → ~7.8GB (50% of RAM) in ~8h** on a single PID (a stalled encoder or a pathological media file makes it buffer raw 960×720 frames unboundedly; raw video is ~25MB/s *per channel*).
+2. RAM + the tiny **2GB swap** fill completely.
+3. The kernel OOM-killer **never fires** (`oomkill 0`) — just enough page cache stays reclaimable to dodge the OOM threshold — so instead of killing liquidsoap, all 8 cores spin at 100% *kernel* time paging (load avg ~97, PSI `memfull 99%`).
+4. Everything stalls: `nvidia-smi`/`sensors` time out, journald wedges (→ corrupted-journal + fsck dirty-bit on next boot). The box is a brick that never reboots itself.
+
+This is distinct from the **May 2026 thermal freeze** (MCE storm at 93°C) — same "wedged but powered" symptom, different cause. Check `dmesg`/temps to tell them apart: thermal shows MCE `[Hardware Error]`; this one shows the memory-pressure/OOM-dodge pattern above.
+
+**Fix applied (2026-08-25): a cgroup memory cap on the liquidsoap unit** (`MemoryHigh=2G`, `MemoryMax=3G` in `ansible/roles/liquidsoap/templates/liquidsoap.service.j2`). On breach the cgroup OOM-killer kills **only liquidsoap**, and `Restart=always` brings it back in 5s — a runaway is now an invisible blip instead of a physical trip to NB. Verify:
+
+```bash
+systemctl show zikzak-liquidsoap.service -p MemoryMax -p MemoryHigh   # 3.0G / 2.0G
+# Was it ever hit? A cap breach shows up as an OOM kill scoped to the unit's cgroup:
+journalctl -u zikzak-liquidsoap | grep -iE "memory|oom|killed"
+```
+
+**Not the trigger (ruled out):** NVENC session contention — the 1080 runs all 4 encoders at ~11% util with headroom to spare. Do **not** distribute encoders onto the 1060; it is the reserved kiosk-display GPU (see GPU section above).
+
+**Still open — the exact trigger:** which media file/encoder state kicks off the runaway isn't yet captured (the pre-freeze `channels.log` was lost on restart). The cap now gives a clean signal: next runaway is OOM-killed + logged instead of freezing the box, so catch the offending track from the journal timestamp + `request.on_air` telnet history when it recurs. Longer-term option if slow bloat (not acute runaway) dominates: a nightly `systemctl restart zikzak-liquidsoap` at a low-traffic hour.
+
 ### Liquidsoap High CPU (~80-100%)
 
 **Symptom:** `zikzak-liquidsoap` pegged at 80%+ CPU; log shows repeated `We must catchup X seconds!`
 
-**Cause 1: Memory bloat after long uptime.** Liquidsoap accumulates video frame buffers over days and starts swapping. Fix: restart the service.
+**Cause 1: Memory bloat after long uptime.** Liquidsoap accumulates video frame buffers over days and starts swapping. Fix: restart the service. (Note: the `MemoryMax=3G` cap now prevents the extreme case where this hard-freezes the whole box — see "Whole Box Frozen" above.)
 
 ```bash
 sudo systemctl restart zikzak-liquidsoap
