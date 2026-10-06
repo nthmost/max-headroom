@@ -1,0 +1,13 @@
+[Unit]
+Description=Run liquidsoap-watchdog every 2 minutes
+
+[Timer]
+# Wait a bit after boot for liquidsoap + icecast to come up, then poll.
+OnBootSec=3min
+OnUnitActiveSec=2min
+# Don't stack runs if one is slow (the script sleeps up to ~45s).
+AccuracySec=15s
+Unit=liquidsoap-watchdog.service
+
+[Install]
+WantedBy=timers.target
