@@ -173,6 +173,13 @@ journalctl -u zikzak-liquidsoap | grep -iE "memory|oom|killed"
 
 **Still open — the exact trigger:** which media file/encoder state kicks off the runaway isn't yet captured (the pre-freeze `channels.log` was lost on restart). The cap now gives a clean signal: next runaway is OOM-killed + logged instead of freezing the box, so catch the offending track from the journal timestamp + `request.on_air` telnet history when it recurs. Longer-term option if slow bloat (not acute runaway) dominates: a nightly `systemctl restart zikzak-liquidsoap` at a low-traffic hour.
 
+**2026-10-08 — liquidsoap is now hand-built 2.5.0 on isolated ffmpeg 7** (not the apt 2.2.4). This fixed a *distinct* failure from the memory-runaway above: the **single-threaded catch-up crawl/livelock** ("We must catchup NN seconds!" / "Too much latency! Resetting active sources" → feed crawls or mounts 404), which hit every few hours because 2.2.4 could only decode ~1 channel of video in real time. 2.5.x's multithreaded decode sustains all 4. The MemoryHigh/Max caps still apply (same base unit), so the runaway protection above is unchanged. **Before any liquidsoap work on zikzak, read [`zikzak-architecture.md`](zikzak-architecture.md#liquidsoap-hand-built-250-on-isolated-ffmpeg-7-read-before-touching) — do not apt-upgrade it or run the ansible liquidsoap role.** Full runbook: [`../zikzak/liquidsoap/README-liquidsoap-2.5.md`](../zikzak/liquidsoap/README-liquidsoap-2.5.md).
+
+### CRT wall blank or a channel stuck (quadmux feed)
+
+- **A channel mount 404s or the feed crawls:** the `liquidsoap-watchdog` timer (every 2 min) probes all four icecast mounts and restarts liquidsoap + quadmux when any is dead (`MIN_HEALTHY=4`). Logs to `/var/log/zikzak-liquidsoap-watchdog.log`. Manual kick: `sudo systemctl restart zikzak-liquidsoap quadmux-display`.
+- Source lives in `zikzak/bin/liquidsoap-watchdog.sh` + `zikzak/systemd/liquidsoap-watchdog.{service,timer}`. The 4AM `daily-display-restart` preempts slow bloat.
+
 ### Liquidsoap High CPU (~80-100%)
 
 **Symptom:** `zikzak-liquidsoap` pegged at 80%+ CPU; log shows repeated `We must catchup X seconds!`

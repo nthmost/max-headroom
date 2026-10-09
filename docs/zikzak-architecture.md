@@ -5,6 +5,30 @@ Decisions specific to the zikzak streaming server, captured during the May
 and worth re-reading before doing GPU work, kernel updates, or X-related
 surgery on this host.
 
+## Liquidsoap: hand-built 2.5.0 on isolated ffmpeg 7 (READ BEFORE TOUCHING)
+
+The `zikzak-liquidsoap` service does **not** run the apt package. It runs a
+hand-built **Liquidsoap 2.5.0** in `/opt/liquidsoap-2.5`, linked against an
+**isolated ffmpeg 7** in `/opt/ffmpeg7`, selected via a systemd drop-in
+(`ExecStart` + `LD_LIBRARY_PATH=/opt/ffmpeg7/lib`). The system ffmpeg stays 6
+(mpv/NVENC/relays use it); only liquidsoap sees ffmpeg 7.
+
+Why: 2.5.x's multithreaded decode is the only way this i7-3770K sustains
+4-channel real-time decode (2.2.4 single-threaded drifts into a catch-up
+livelock). And 2.5.x **requires ffmpeg 7** — on noble's ffmpeg 6 it mis-decodes
+any color-range-tagged file (`[buffer] No such option: range`), which stalled
+the music channel within minutes.
+
+**Operational guardrails:**
+- Do **NOT** `apt install/upgrade liquidsoap` or point the service at
+  `/usr/bin/liquidsoap` — that's the incompatible 2.2.4.
+- Do **NOT** run the ansible `liquidsoap` role against zikzak — it still installs
+  2.2.4 + the old ExecStart and would clobber this deploy.
+- Rollback kit: `~/liquidsoap-rollback/` (2.2.4 deb + pre-upgrade config).
+
+**Full build / link / run / rollback runbook:**
+[`zikzak/liquidsoap/README-liquidsoap-2.5.md`](../zikzak/liquidsoap/README-liquidsoap-2.5.md).
+
 ## GPU split
 
 zikzak has two NVIDIA cards. They are pinned to different jobs so encode and
