@@ -48,10 +48,15 @@ set -uo pipefail
 
 ICECAST="http://localhost:8000"
 CHANNELS="1 2 3 4"
-MIN_HEALTHY=3            # fewer than this many mounts at 200 == unhealthy (mode A)
+MIN_HEALTHY=3            # restart only when 2+ mounts are dead (mode A).
+                        # NOTE: 2.5.x gives each output.external its own clock and one
+                        # can wedge alone (ch1 did, 2026-10-08). We deliberately do NOT
+                        # set this to 4: ch1 currently crawls/stalls reproducibly within
+                        # minutes, so a single-dead-channel trigger would restart-loop.
+                        # Raise to 4 (+ re-enable crawl detection) once ch1 is fixed.
 LIQ_LOG=/home/max/liquidsoap/channels.log
-LAT_WINDOW=180          # look this many seconds back in the log for resets (mode B)
-LAT_RESET_MAX=2         # >= this many latency resets in the window == crawling
+LAT_WINDOW=180          # look this many seconds back in the log (mode B)
+LAT_CATCHUP_MAX=30      # >= this many "we must catchup" lines in the window == crawling
 COOLDOWN=600            # min seconds between auto-restarts
 GRACE=120              # ignore health within this many secs of liquidsoap start
 STAMP=/run/liquidsoap-watchdog.last-restart
@@ -69,22 +74,23 @@ healthy_count() {
     echo "$n"
 }
 
-# Mode B: count "Too much latency! Resetting active sources" lines in the
-# liquidsoap log whose timestamp is within the last $1 seconds. Healthy
-# operation never resets; a sustained crawl resets every ~45-60s.
-latency_resets_recent() {
+# Mode B: count clock "we must catchup" lines in the liquidsoap log whose
+# timestamp is within the last $1 seconds. Matches BOTH phrasings — 2.2.4
+# ("We must catchup NN seconds!") and 2.5.x ("Latency is too high: we must
+# catchup NN seconds!"). Healthy operation shows ~none; a sustained crawl
+# (all clocks behind, mounts still 200) spams many per second.
+catchup_lines_recent() {
     local window="$1" cutoff dstr ts n=0 line
     [ -r "$LIQ_LOG" ] || { echo 0; return; }
     cutoff=$(date -d "-${window} seconds" +%s 2>/dev/null) || { echo 0; return; }
-    # tail a generous slice so we still see ~60s-spaced resets even when the
-    # log is spamming catchup lines; grep -F narrows to resets before parsing.
+    # tail a generous slice; grep narrows to catchup lines before parsing ts.
     while IFS= read -r line; do
         dstr=$(printf '%s' "$line" | grep -oE '^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}')
         dstr=${dstr//\//-}
         [ -n "$dstr" ] || continue
         ts=$(date -d "$dstr" +%s 2>/dev/null) || continue
         [ "$ts" -ge "$cutoff" ] && n=$((n+1))
-    done < <(tail -n 100000 "$LIQ_LOG" 2>/dev/null | grep -F "Too much latency! Resetting active sources")
+    done < <(tail -n 100000 "$LIQ_LOG" 2>/dev/null | grep -iE "we must catchup")
     echo "$n"
 }
 
@@ -104,26 +110,25 @@ if [ "$start_epoch" -gt 0 ] && [ $((now_epoch - start_epoch)) -lt "$GRACE" ]; th
     exit 0
 fi
 
-# ── Probe both failure modes, with a debounce re-probe ──────────────────────
-assess() {   # sets globals H (mounts up) and R (recent resets); echoes verdict
+# ── Probe mount health, with a debounce re-probe ────────────────────────────
+# assess sets global H (mounts up) and returns 0 if healthy. Call it WITHOUT a
+# subshell so H persists into the restart path — a $(assess) command substitution
+# sets H in a subshell, leaving it unset in the parent and crashing under `set -u`.
+# Mode B (clock-crawl magnitude, catchup_lines_recent) is defined above but NOT
+# wired in: with ch1 chronically crawling it would restart-loop. Re-enable — and
+# raise MIN_HEALTHY to 4 — once ch1 is fixed.
+assess() {
     H=$(healthy_count)
-    R=$(latency_resets_recent "$LAT_WINDOW")
-    if [ "$H" -ge "$MIN_HEALTHY" ] && [ "$R" -lt "$LAT_RESET_MAX" ]; then
-        echo healthy
-    else
-        echo unhealthy
-    fi
+    [ "$H" -ge "$MIN_HEALTHY" ]
 }
 
-[ "$(assess)" = healthy ] && exit 0
-# It may just be mid-reconnect or a transient reset — re-check after a pause.
+assess && exit 0
+# May just be mid-reconnect — re-check after a pause.
 sleep 12
-[ "$(assess)" = healthy ] && exit 0
+assess && exit 0
 
-# Sustained failure. Build a reason and enforce cooldown before kicking.
-reason=""
-[ "$H" -lt "$MIN_HEALTHY" ] && reason="mounts ${H}/4 up (dead)"
-[ "$R" -ge "$LAT_RESET_MAX" ] && reason="${reason:+$reason; }${R} latency-resets/${LAT_WINDOW}s (clock crawling)"
+# Sustained failure.
+reason="mounts ${H}/4 up (dead channel)"
 
 last=0
 [ -f "$STAMP" ] && last=$(cat "$STAMP" 2>/dev/null || echo 0)
