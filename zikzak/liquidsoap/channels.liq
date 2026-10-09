@@ -1,4 +1,5 @@
 # Zikzak — 4-channel video stream
+# Managed by Ansible — local edits will be overwritten
 #
 # Media structure: /mnt/media/<category>/<subdir>/
 # Categories: action anime cartoons comedy commercials documentaries
@@ -15,18 +16,14 @@ settings.server.telnet.set(true)
 settings.server.telnet.bind_addr.set("127.0.0.1")
 settings.server.telnet.port.set(1234)
 
-log.file.set(true)
-log.file.path.set("/home/max/liquidsoap/channels.log")
+settings.log.file.set(true)
+settings.log.file.path.set("/home/max/liquidsoap/channels.log")
 
 # NVENC: canvas is already 960x720, no scale filter needed
 let nvenc_cmd_base =
   "-r 25 " ^                                      # Explicit constant 25fps output
   "-vf \"format=yuv420p\" " ^
   "-c:v h264_nvenc -preset p4 -profile:v high " ^
-  # Alternate A/V sync params tried in commit 62cd1e6 ("audio/video sync
-  # investigation and fix"): -g 50 (2s GOP, matches HLS target) and
-  # aresample=async=1000 (correct up to 1000 samples/sec of drift). If audio
-  # delay regresses with the values below, swap in those instead.
   "-b:v 1400k -maxrate 1400k -bufsize 2800k -g 60 " ^
   "-c:a aac -b:a 128k -ac 2 -ar 44100 " ^
   "-af \"aresample=async=1\" " ^                  # Audio resample to sync with video
@@ -34,7 +31,7 @@ let nvenc_cmd_base =
   "-f mpegts "
 
 def encoder_cmd(mount) =
-  nvenc_cmd_base ^ "icecast://source:noisebridge@localhost:8000" ^ mount
+  "/home/max/liquidsoap/encode-ch.sh " ^ mount
 end
 
 let media = "/mnt/media"
@@ -91,9 +88,12 @@ end
 
 def make_music_channel(id) =
   music_long    = dir_src("#{media}/music/long")
+  music_short   = dir_src("#{media}/music/short")
   interstitials = dir_src("#{media}/interstitials")
-  s = rotate([music_long, interstitials])
-  s.on_track(fun(meta) -> push_nowplaying("/#{id}.ts", "/mhbn-#{id}.ts", meta))
+  # Mix long and short music (weight 2:3), with interstitials after each
+  music_mix = random([music_long.{weight=2}, music_short.{weight=3}])
+  s = rotate([music_mix, interstitials])
+  s.on_track(synchronous=false, fun(meta) -> push_nowplaying("/#{id}.ts", "/mhbn-#{id}.ts", meta))
   mksafe(s)
 end
 
@@ -124,9 +124,8 @@ def make_programmed_channel(id) =
   interstitials = dir_src("#{media}/interstitials")
   commercials   = dir_src("#{media}/commercials/short")
 
-  s = random(weights=[1, 3, 5, 1, 1],
-    [medium_cats, short_cats, prelinger, interstitials, commercials])
-  s.on_track(fun(meta) -> push_nowplaying("/#{id}.ts", "/mhbn-#{id}.ts", meta))
+  s = random([medium_cats.{weight=1}, short_cats.{weight=3}, prelinger.{weight=5}, interstitials.{weight=1}, commercials.{weight=1}])
+  s.on_track(synchronous=false, fun(meta) -> push_nowplaying("/#{id}.ts", "/mhbn-#{id}.ts", meta))
   mksafe(s)
 end
 
@@ -137,7 +136,7 @@ ch2 = make_programmed_channel("ch2")
 ch3 = make_programmed_channel("ch3")
 ch4 = make_programmed_channel("ch4")
 
-output.external.ffmpeg(id="enc_ch1", show_command=true, reopen_on_error=fun (_)->5., encoder_cmd("/ch1.ts"), ch1)
-output.external.ffmpeg(id="enc_ch2", show_command=true, reopen_on_error=fun (_)->5., encoder_cmd("/ch2.ts"), ch2)
-output.external.ffmpeg(id="enc_ch3", show_command=true, reopen_on_error=fun (_)->5., encoder_cmd("/ch3.ts"), ch3)
-output.external.ffmpeg(id="enc_ch4", show_command=true, reopen_on_error=fun (_)->5., encoder_cmd("/ch4.ts"), ch4)
+output.external(id="enc_ch1", reopen_on_error=fun (_)->5., %ffmpeg(format="avi", %video(codec="rawvideo"), %audio(codec="pcm_s16le")), encoder_cmd("/ch1.ts"), ch1)
+output.external(id="enc_ch2", reopen_on_error=fun (_)->5., %ffmpeg(format="avi", %video(codec="rawvideo"), %audio(codec="pcm_s16le")), encoder_cmd("/ch2.ts"), ch2)
+output.external(id="enc_ch3", reopen_on_error=fun (_)->5., %ffmpeg(format="avi", %video(codec="rawvideo"), %audio(codec="pcm_s16le")), encoder_cmd("/ch3.ts"), ch3)
+output.external(id="enc_ch4", reopen_on_error=fun (_)->5., %ffmpeg(format="avi", %video(codec="rawvideo"), %audio(codec="pcm_s16le")), encoder_cmd("/ch4.ts"), ch4)

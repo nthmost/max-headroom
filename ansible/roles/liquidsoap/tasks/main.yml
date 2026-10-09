@@ -21,6 +21,25 @@
   become: yes
   notify: Restart liquidsoap
 
+- name: Deploy external NVENC encoder wrapper (called by output.external)
+  ansible.builtin.template:
+    src: encode-ch.sh.j2
+    dest: "{{ liquidsoap_config_path }}/encode-ch.sh"
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: '0755'
+    backup: yes
+  become: yes
+  notify: Restart liquidsoap
+
+# NOTE: the config + wrapper above REQUIRE Liquidsoap 2.5.x (multithreaded decode).
+# The apt package (2.2.4) cannot run them. The 2.5.x binary is currently a manual
+# opam build deployed to /opt/liquidsoap-2.5 with a systemd drop-in overriding
+# ExecStart — this role does NOT yet build/deploy it. See
+# zikzak/liquidsoap/README-liquidsoap-2.5.md. Do not run this role against zikzak
+# until the binary install + ExecStart are reconciled here, or it will leave the
+# service pointing at an incompatible interpreter.
+
 - name: Deploy liquidsoap systemd service
   ansible.builtin.template:
     src: liquidsoap.service.j2

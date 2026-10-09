@@ -1,0 +1,20 @@
+#!/bin/bash
+# encode-ch.sh — external NVENC encoder for one quadmux channel.
+# Managed by Ansible — local edits will be overwritten.
+#
+# Reads a raw AVI (rawvideo + pcm_s16le) from liquidsoap on stdin, H.264-encodes
+# it via NVENC, and publishes mpegts to the local icecast mount given as $1
+# (e.g. /ch1.ts). Invoked by liquidsoap `output.external`, which in 2.5.x execs
+# argv directly (no shell) — so all shell quoting lives here, not in channels.liq.
+# liquidsoap's bundled libavcodec has no h264_nvenc; this uses the system ffmpeg
+# which does.
+set -u
+mount="$1"
+exec ffmpeg -hide_banner -loglevel warning \
+  -f avi -vcodec rawvideo -r {{ liquidsoap_framerate }} -acodec pcm_s16le -i pipe:0 \
+  -r {{ liquidsoap_framerate }} -vf "format=yuv420p" \
+  -c:v h264_nvenc -preset {{ liquidsoap_nvenc_preset }} -profile:v high \
+  -b:v {{ liquidsoap_video_bitrate }} -maxrate {{ liquidsoap_video_maxrate }} -bufsize {{ liquidsoap_video_bufsize }} -g {{ liquidsoap_video_gop }} \
+  -c:a aac -b:a {{ liquidsoap_audio_bitrate }} -ac {{ liquidsoap_audio_channels }} -ar {{ liquidsoap_audio_samplerate }} \
+  -af "aresample=async=1" -max_muxing_queue_size 1024 \
+  -f mpegts "icecast://{{ liquidsoap_icecast_source_user }}:{{ liquidsoap_icecast_source_password }}@{{ liquidsoap_icecast_host }}:{{ liquidsoap_icecast_port }}${mount}"
