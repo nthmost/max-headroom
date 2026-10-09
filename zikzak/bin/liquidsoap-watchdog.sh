@@ -48,12 +48,11 @@ set -uo pipefail
 
 ICECAST="http://localhost:8000"
 CHANNELS="1 2 3 4"
-MIN_HEALTHY=3            # restart only when 2+ mounts are dead (mode A).
-                        # NOTE: 2.5.x gives each output.external its own clock and one
-                        # can wedge alone (ch1 did, 2026-10-08). We deliberately do NOT
-                        # set this to 4: ch1 currently crawls/stalls reproducibly within
-                        # minutes, so a single-dead-channel trigger would restart-loop.
-                        # Raise to 4 (+ re-enable crawl detection) once ch1 is fixed.
+MIN_HEALTHY=4            # ALL four mounts must serve (mode A). 2.5.x gives each
+                        # output.external its own clock and one can wedge alone (ch1
+                        # did as a one-off 2026-10-08), so a single dead mount must
+                        # trigger recovery. Safe to be this strict now that ch1's
+                        # chronic ffmpeg-6 decode-churn is fixed (runs on ffmpeg 7).
 LIQ_LOG=/home/max/liquidsoap/channels.log
 LAT_WINDOW=180          # look this many seconds back in the log (mode B)
 LAT_CATCHUP_MAX=30      # >= this many "we must catchup" lines in the window == crawling

@@ -1,11 +1,12 @@
 # zikzak liquidsoap 2.5.x deployment (hand-built)
 
-**Status (2026-10-07):** zikzak runs **Liquidsoap 2.5.0+git@b5632462c**, hand-built
-from source via opam, serving the 4-channel quadmux feed. This replaced the stock
-apt **2.2.4** package, which could only decode ~1 channel of video in real time on
-the i7-3770K and periodically crawled/livelocked.
+**Status (2026-10-08):** zikzak runs **Liquidsoap 2.5.0+git@b5632462c**, hand-built
+from source via opam and **linked against an isolated ffmpeg 7** in `/opt/ffmpeg7`,
+serving the 4-channel quadmux feed. This replaced the stock apt **2.2.4** package,
+which could only decode ~1 channel of video in real time on the i7-3770K and
+periodically crawled/livelocked.
 
-## Why 2.5.x (and why from source)
+## Why 2.5.x (and why ffmpeg 7)
 
 2.5.x makes ffmpeg **decode multithreaded** (`#5014`) and runs clocks as scheduler
 tasks across cores. On this 2012 CPU that's the difference between keeping real time
@@ -14,15 +15,29 @@ versus 2.4.5 stuck at ~1.5 cores (heavy channels spiralled) and 2.2.4 single-thr
 (~1 core, drifted into the catch-up/"Too much latency! Resetting active sources"
 cycle every few hours).
 
-There is **no prebuilt 2.5.x for Ubuntu noble / Mint 22.3** (ffmpeg 6). Savonet's
-rolling debs target newer distros (ffmpeg 7) and their apt repo has no noble rolling
-build. So we build from source against the system ffmpeg 6.
+**ffmpeg 7 is mandatory.** 2.5.x's decode/scale filtergraph passes a `range` option to
+ffmpeg's `buffer` filter that only exists in **ffmpeg 7+**. Built against noble's
+**ffmpeg 6**, any input file carrying color-range metadata fails to decode
+(`[buffer] No such option: range.` → `Avutil.Error(Option not found)`). ch2/3/4's
+content mostly isn't range-tagged so they survived, but ch1 (music + interstitials,
+all YouTube-sourced → range-tagged) failed WHOLESALE: it churned through unplayable
+files, burned CPU, and stalled within ~4-12 min. This is NOT config-fixable (proved
+independent of channel structure; no setting disables the option).
+
+There is **no prebuilt 2.5.x for noble** (ffmpeg 6), and noble has no ffmpeg 7. So we
+build ffmpeg 7 into its own prefix (`/opt/ffmpeg7`) and link liquidsoap against it,
+running the service with `LD_LIBRARY_PATH=/opt/ffmpeg7/lib`. The **system ffmpeg stays
+6**, untouched — mpv (quadmux display), `encode-ch.sh` (NVENC), and the mhbn relays all
+keep using it. Only the liquidsoap process sees ffmpeg 7.
 
 ## What's deployed
 
+- **ffmpeg 7:** `/opt/ffmpeg7/` (ffmpeg 7.1.1, shared libs, LGPL build — libs only, no
+  CLI). Provides `libav*.so.61/.59`, `libsw*`, `libavfilter.so.10`.
 - **Binary:** `/opt/liquidsoap-2.5/bin/liquidsoap` (+ stdlib at
   `/opt/liquidsoap-2.5/share/liquidsoap-lang/libs/`), copied from the opam build in
-  `/home/nthmost/.opam/liq25/`. Dynamically links the system ffmpeg-6 `.so`s.
+  `/home/nthmost/.opam/liq25/`. Links the **ffmpeg 7** `.so.61` set from `/opt/ffmpeg7`
+  (needs `LD_LIBRARY_PATH=/opt/ffmpeg7/lib` at runtime — set in the drop-in).
 - **Config:** `/home/max/liquidsoap/channels.liq` — 2.5.x-migrated (see repo
   `ansible/roles/liquidsoap/templates/channels.liq.j2` and the reference
   `zikzak/liquidsoap/channels.liq`).
@@ -33,13 +48,31 @@ build. So we build from source against the system ffmpeg 6.
   points `ExecStart` at the /opt binary with `--stdlib`:
   ```ini
   [Service]
+  Environment=LD_LIBRARY_PATH=/opt/ffmpeg7/lib
+  Environment=LIQ_CACHE_SYSTEM_DIR=/home/max/.cache/liquidsoap
+  Environment=LIQ_CACHE_USER_DIR=/home/max/.cache/liquidsoap
   ExecStart=
   ExecStart=/opt/liquidsoap-2.5/bin/liquidsoap --stdlib /opt/liquidsoap-2.5/share/liquidsoap-lang/libs/stdlib.liq /home/max/liquidsoap/channels.liq
   ```
+  (`LIQ_CACHE_*` point liquidsoap's stdlib cache at a max-writable dir; the compiled-in
+  default is nthmost's opam prefix, which the `max` service user can't write.)
 - The base `zikzak-liquidsoap.service` (User=max, MemoryHigh=2G/MemoryMax=3G) and the
   `liquidsoap-watchdog` / `daily-display-restart` safety nets are unchanged.
 
 ## Rebuild from scratch (opam)
+
+### 1. Build ffmpeg 7 into /opt/ffmpeg7
+
+```bash
+sudo apt-get install -y nasm
+cd ~ && curl -fsSL https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz | tar xJ && cd ffmpeg-7.1.1
+./configure --prefix=/opt/ffmpeg7 --enable-shared --disable-static --disable-programs --disable-doc --disable-ffplay --enable-pic
+make -j"$(nproc)" && sudo make install
+# sanity: should print 61.x
+PKG_CONFIG_PATH=/opt/ffmpeg7/lib/pkgconfig pkg-config --modversion libavcodec
+```
+
+### 2. Build liquidsoap 2.5.x against it
 
 ```bash
 # as nthmost (has sudo, so opam depext can apt-install system -dev libs)
@@ -48,11 +81,16 @@ opam init --bare -y --disable-sandboxing
 opam switch create liq25 ocaml-base-compiler.5.5.0 -y     # compiles OCaml 5.5 (~slow on this CPU)
 eval "$(opam env --switch=liq25)"
 export OPAMCONFIRMLEVEL=unsafe-yes OPAMYES=1
+export PKG_CONFIG_PATH=/opt/ffmpeg7/lib/pkgconfig       # <-- so the bindings link ffmpeg 7
 git clone --recursive -b rolling-release-v2.5.x https://github.com/savonet/liquidsoap.git ~/liquidsoap-src
 cd ~/liquidsoap-src
 opam pin add -y -n .
-opam install -y ffmpeg        # ocaml ffmpeg bindings (+ depext pulls libav*-dev)
-opam install -y liquidsoap
+# Build the av* bindings (they link libav) + liquidsoap AGAINST ffmpeg 7. NB: the
+# package names are ffmpeg-av* (there is NO ffmpeg-avformat; avformat is in ffmpeg-av).
+opam install -y ffmpeg-avutil ffmpeg-avcodec ffmpeg-avfilter ffmpeg-swresample \
+  ffmpeg-swscale ffmpeg-avdevice ffmpeg-av ffmpeg liquidsoap
+# verify the binary links .so.61 (ffmpeg 7), not .60:
+ldd ~/.opam/liq25/bin/liquidsoap | grep -oE 'libavcodec.so.[0-9]+'
 
 # deploy to /opt (so the `max` service user can run it, independent of nthmost's home)
 sudo mkdir -p /opt/liquidsoap-2.5/bin /opt/liquidsoap-2.5/share
@@ -61,9 +99,15 @@ sudo cp -r ~/.opam/liq25/share/liquidsoap-lang /opt/liquidsoap-2.5/share/
 sudo chmod -R a+rX /opt/liquidsoap-2.5
 ```
 
-Validate the config before restarting (note `--stdlib` points at the **file**):
+If you ever rebuild only the bindings against a new ffmpeg, reinstall the **ffmpeg-av\***
+sub-packages (not just the `ffmpeg` meta) with `PKG_CONFIG_PATH` set — the meta alone
+does not re-link libav, so the binary keeps the old soname.
+
+Validate the config before restarting (note `--stdlib` points at the **file**, and
+`LD_LIBRARY_PATH` must be set so it finds the ffmpeg 7 `.so`s):
 ```bash
-sudo -u max /opt/liquidsoap-2.5/bin/liquidsoap \
+sudo -u max env LD_LIBRARY_PATH=/opt/ffmpeg7/lib HOME=/home/max \
+  /opt/liquidsoap-2.5/bin/liquidsoap \
   --stdlib /opt/liquidsoap-2.5/share/liquidsoap-lang/libs/stdlib.liq \
   --check /home/max/liquidsoap/channels.liq
 ```
