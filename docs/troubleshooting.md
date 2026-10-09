@@ -161,10 +161,10 @@ The script + env var are managed by the `quadmux-display` ansible role; set `qm_
 
 This is distinct from the **May 2026 thermal freeze** (MCE storm at 93°C) — same "wedged but powered" symptom, different cause. Check `dmesg`/temps to tell them apart: thermal shows MCE `[Hardware Error]`; this one shows the memory-pressure/OOM-dodge pattern above.
 
-**Fix applied (2026-08-25): a cgroup memory cap on the liquidsoap unit** (`MemoryHigh=2G`, `MemoryMax=3G` in `ansible/roles/liquidsoap/templates/liquidsoap.service.j2`). On breach the cgroup OOM-killer kills **only liquidsoap**, and `Restart=always` brings it back in 5s — a runaway is now an invisible blip instead of a physical trip to NB. Verify:
+**Fix applied (2026-08-25): a cgroup memory cap on the liquidsoap unit**, in the drop-in `zikzak/systemd/zikzak-liquidsoap.service.d/memory.conf` (+ ansible `liquidsoap_memory_high/max` defaults). On breach the cgroup OOM-killer kills **only liquidsoap**, and `Restart=always` brings it back in 5s — a runaway is now an invisible blip instead of a physical trip to NB. **Raised 2026-10-08 to `MemoryHigh=4G`, `MemoryMax=6G`** for Liquidsoap 2.5.0 — its multithreaded decode legitimately needs more than the 2.2.4-era 2G (which was reclaim-throttling it at the watermark); 6G still catches the 7.8G runaway. Verify:
 
 ```bash
-systemctl show zikzak-liquidsoap.service -p MemoryMax -p MemoryHigh   # 3.0G / 2.0G
+systemctl show zikzak-liquidsoap.service -p MemoryMax -p MemoryHigh   # 6.0G / 4.0G
 # Was it ever hit? A cap breach shows up as an OOM kill scoped to the unit's cgroup:
 journalctl -u zikzak-liquidsoap | grep -iE "memory|oom|killed"
 ```
